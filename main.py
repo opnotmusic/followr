@@ -1,170 +1,163 @@
+# main.py
 import os
 import sys
-from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import ElementClickInterceptedException, TimeoutException
+from playwright.sync_api import sync_playwright
 import time
+from datetime import datetime
+import random
 
 class InstaFollower:
     def __init__(self):
-        # Validate credentials
         self.username = os.environ.get('INSTAGRAM_USERNAME')
         self.password = os.environ.get('INSTAGRAM_PASSWORD')
         self.target_account = os.environ.get('TARGET_ACCOUNT', 'davidguetta')
-
+        
         if not self.username or not self.password:
             raise ValueError(
                 "Missing credentials! Ensure INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD "
                 "are set in your environment variables or GitHub Secrets."
             )
-
+            
+        self.max_follows = 133
+        self.follow_count = 0
         print(f"Initializing bot for user: {self.username}")
         print(f"Target account to follow: {self.target_account}")
 
-        # Enhanced Chrome options
-        chrome_options = Options()
-        chrome_options.add_argument('--headless')
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-        chrome_options.add_argument('--disable-extensions')
-        chrome_options.add_argument('--disable-notifications')
-        chrome_options.add_argument('--disable-gpu')
-        chrome_options.add_argument('--window-size=1920,1080')
-        chrome_options.add_argument('--start-maximized')
-        chrome_options.add_argument('--lang=en-US')
-        
-        # Add modern user agent
-        chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-        
-        # Additional Chrome preferences
-        chrome_prefs = {
-            'profile.default_content_setting_values.notifications': 2,
-            'credentials_enable_service': False,
-            'profile.password_manager_enabled': False,
-            'profile.default_content_settings.popups': 0,
-            'download.default_directory': '/tmp'
-        }
-        chrome_options.add_experimental_option('prefs', chrome_prefs)
-        chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
-        
-        self.driver = webdriver.Chrome(options=chrome_options)
-        
-        # Execute CDP commands to prevent detection
-        self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-            "userAgent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        })
-        self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-        
-        self.wait = WebDriverWait(self.driver, 20)  # Increased wait time
-        self.max_follows = 133
-        self.follow_count = 0
+    def run(self):
+        with sync_playwright() as p:
+            # Launch browser
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                viewport={'width': 1280, 'height': 800},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            )
+            
+            # Create new page
+            page = context.new_page()
+            
+            try:
+                self.login(page)
+                self.find_followers(page)
+                self.follow_users(page)
+            except Exception as e:
+                print(f"An error occurred: {str(e)}")
+                # Save screenshot for debugging
+                page.screenshot(path=f"error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+            finally:
+                browser.close()
 
-    def login(self):
+    def login(self, page):
+        print("Attempting to log in...")
+        
+        # Navigate to Instagram
+        page.goto("https://www.instagram.com/accounts/login/")
+        page.wait_for_load_state("networkidle")
+        
+        # Fill in login form
+        print("Entering credentials...")
+        page.fill("input[name='username']", self.username)
+        page.fill("input[name='password']", self.password)
+        
+        # Click login button
+        page.click("button[type='submit']")
+        
+        # Wait for navigation and check for success
         try:
-            print("Attempting to log in...")
-            self.driver.get("https://www.instagram.com/")
-            time.sleep(5)  # Wait for initial page load
+            # Wait for either home icon or save login info dialog
+            page.wait_for_selector("svg[aria-label='Home'], button:has-text('Save info')", timeout=10000)
             
-            # Go to login page
-            self.driver.get("https://www.instagram.com/accounts/login/")
-            time.sleep(5)
-
-            # Check if we're on the login page
-            print("Looking for login fields...")
+            # Handle "Save Login Info" dialog if it appears
+            save_info_button = page.query_selector("button:has-text('Not Now')")
+            if save_info_button:
+                save_info_button.click()
+                print("Handled 'Save Login Info' dialog")
             
-            # Try different selectors for username and password fields
-            try:
-                username_field = self.wait.until(EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, "input[name='username']")
-                ))
-                password_field = self.wait.until(EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, "input[name='password']")
-                ))
-            except TimeoutException:
-                print("Couldn't find standard login fields, trying alternative selectors...")
-                username_field = self.wait.until(EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, "input[aria-label='Phone number, username, or email']")
-                ))
-                password_field = self.wait.until(EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, "input[aria-label='Password']")
-                ))
-
-            print("Found login fields, entering credentials...")
-            
-            # Clear fields first
-            username_field.clear()
-            password_field.clear()
-            
-            # Type credentials with random delays
-            for char in self.username:
-                username_field.send_keys(char)
-                time.sleep(0.1)
-            
-            for char in self.password:
-                password_field.send_keys(char)
-                time.sleep(0.1)
-
-            # Find and click login button
-            login_button = self.wait.until(EC.element_to_be_clickable(
-                (By.CSS_SELECTOR, "button[type='submit']")
-            ))
-            print("Clicking login button...")
-            login_button.click()
-            
-            # Wait for login to complete
-            time.sleep(10)
-            
-            # Verify login success
-            try:
-                self.wait.until(EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, "svg[aria-label='Home']")
-                ))
-                print("Successfully logged in!")
-            except TimeoutException:
-                print("Login verification failed - checking for additional dialogs...")
+            # Handle notifications dialog if it appears
+            page.wait_for_timeout(2000)
+            notifications_button = page.query_selector("button:has-text('Not Now')")
+            if notifications_button:
+                notifications_button.click()
+                print("Handled notifications dialog")
                 
-                # Check for and handle various post-login dialogs
-                try:
-                    save_info_button = self.driver.find_element(By.XPATH, "//button[contains(text(), 'Not Now')]")
-                    save_info_button.click()
-                    print("Handled 'Save Info' dialog")
-                except:
-                    pass
-                
-                try:
-                    notifications_button = self.driver.find_element(By.XPATH, "//button[contains(text(), 'Not Now')]")
-                    notifications_button.click()
-                    print("Handled notifications dialog")
-                except:
-                    pass
-
+            print("Successfully logged in!")
+            
         except Exception as e:
-            print(f"Login failed with error: {str(e)}")
-            print("Current page source:")
-            print(self.driver.page_source[:1000])  # Print first 1000 chars of page source for debugging
-            self.close()
-            sys.exit(1)
+            print(f"Login failed: {str(e)}")
+            raise
 
-    # ... [rest of the methods remain the same] ...
+    def find_followers(self, page):
+        print(f"Navigating to {self.target_account}'s profile...")
+        page.goto(f"https://www.instagram.com/{self.target_account}/")
+        page.wait_for_load_state("networkidle")
+        
+        # Click followers link - try multiple selectors
+        print("Looking for followers link...")
+        selectors = [
+            "a:has-text('followers')",
+            f"a[href='/{self.target_account}/followers/']",
+            "li:nth-child(2) a"  # Common position for followers link
+        ]
+        
+        for selector in selectors:
+            try:
+                page.click(selector)
+                print(f"Found and clicked followers link using selector: {selector}")
+                break
+            except:
+                continue
+                
+        # Wait for followers modal
+        page.wait_for_selector("div._aano", timeout=10000)
+        print("Followers modal loaded")
+        
+        # Scroll to load followers
+        print("Loading followers...")
+        modal = page.locator("div._aano")
+        for i in range(min(10, (self.max_follows // 12) + 2)):
+            modal.evaluate("element => element.scrollTop = element.scrollHeight")
+            page.wait_for_timeout(random.uniform(500, 1000))  # Random delay between scrolls
+            print(f"Scroll {i + 1} completed")
+
+    def follow_users(self, page):
+        print("Looking for follow buttons...")
+        follow_buttons = page.locator("button:has-text('Follow')")
+        
+        count = min(await follow_buttons.count(), self.max_follows)
+        print(f"Found {count} potential accounts to follow")
+        
+        for i in range(count):
+            if self.follow_count >= self.max_follows:
+                print(f"Reached daily follow limit of {self.max_follows}")
+                break
+                
+            try:
+                button = follow_buttons.nth(i)
+                if await button.is_visible():
+                    # Random delay before clicking
+                    page.wait_for_timeout(random.uniform(500, 1500))
+                    button.click()
+                    self.follow_count += 1
+                    print(f"Followed account {self.follow_count} of {self.max_follows}")
+                    
+                    # Handle any dialogs that might appear
+                    cancel_button = page.query_selector("button:has-text('Cancel')")
+                    if cancel_button:
+                        cancel_button.click()
+                        print("Handled dialog")
+                        
+            except Exception as e:
+                print(f"Error following user: {str(e)}")
+                continue
+        
+        print(f"Finished following users. Total followed: {self.follow_count}")
 
 def main():
-    bot = None
     try:
         bot = InstaFollower()
-        bot.login()
-        bot.find_followers()
-        bot.follow()
+        bot.run()
     except Exception as e:
         print(f"Bot failed with error: {str(e)}")
-    finally:
-        if bot:
-            bot.close()
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
