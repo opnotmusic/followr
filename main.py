@@ -122,7 +122,7 @@ class InstaFollower:
         print("Looking for follow buttons...")
         follow_buttons = page.locator("button:has-text('Follow')")
         
-        count = min(await follow_buttons.count(), self.max_follows)
+        count = min(follow_buttons.count(), self.max_follows)
         print(f"Found {count} potential accounts to follow")
         
         for i in range(count):
@@ -132,7 +132,7 @@ class InstaFollower:
                 
             try:
                 button = follow_buttons.nth(i)
-                if await button.is_visible():
+                if button.is_visible():
                     # Random delay before clicking
                     page.wait_for_timeout(random.uniform(500, 1500))
                     button.click()
