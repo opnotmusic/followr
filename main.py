@@ -19,6 +19,8 @@ class InstaFollower:
         self.username = os.environ.get('INSTAGRAM_USERNAME')
         self.password = os.environ.get('INSTAGRAM_PASSWORD')
         self.target_account = os.environ.get('TARGET_ACCOUNT', 'davidguetta')
+        self.max_follows = 133  # Daily follow limit
+        self.follow_count = 0
 
     def login(self):
         self.driver.get("https://www.instagram.com/accounts/login/")
@@ -43,24 +45,43 @@ class InstaFollower:
         time.sleep(2)
         
         modal = self.driver.find_element(By.CSS_SELECTOR, "div._aano")
-        for i in range(10):
+        
+        # Only scroll enough to get slightly more than max_follows buttons
+        # Assuming each scroll loads about 12 users
+        scroll_times = min(10, (self.max_follows // 12) + 2)
+        
+        for i in range(scroll_times):
             self.driver.execute_script(
                 "arguments[0].scrollTop = arguments[0].scrollHeight", modal)
             time.sleep(2)
 
     def follow(self):
         all_buttons = self.driver.find_elements(By.CSS_SELECTOR, "button._acan")
+        print(f"Found {len(all_buttons)} potential accounts to follow")
+        
         for button in all_buttons:
+            if self.follow_count >= self.max_follows:
+                print(f"Reached daily follow limit of {self.max_follows}")
+                break
+                
             try:
-                button.click()
-                time.sleep(1)
+                if "Follow" in button.text:  # Only click if it's a Follow button
+                    button.click()
+                    self.follow_count += 1
+                    print(f"Followed account {self.follow_count} of {self.max_follows}")
+                    time.sleep(1)
             except ElementClickInterceptedException:
-                cancel_button = self.driver.find_element(By.XPATH, 
-                    '//button[contains(text(), "Cancel")]')
-                cancel_button.click()
+                try:
+                    cancel_button = self.driver.find_element(By.XPATH, 
+                        '//button[contains(text(), "Cancel")]')
+                    cancel_button.click()
+                except:
+                    print("Couldn't handle popup, skipping...")
+                    continue
                 
     def close(self):
         self.driver.quit()
+        print(f"Bot finished. Followed {self.follow_count} accounts")
 
 def main():
     bot = InstaFollower()
