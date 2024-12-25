@@ -49,7 +49,7 @@ class InstaFollower:
     def login(self, page):
         print("Attempting to log in...")
         
-        # Navigate to Instagram
+        # Navigate to Instagram login page
         page.goto("https://www.instagram.com/accounts/login/")
         page.wait_for_load_state("networkidle")
         
@@ -58,21 +58,40 @@ class InstaFollower:
         page.fill("input[name='username']", self.username)
         page.fill("input[name='password']", self.password)
         
-        # Click login button
+        # Click the login button
         page.click("button[type='submit']")
         
-        # Wait for navigation and check for success
+        # Wait for navigation and handle dialogs
         try:
-            # Wait for either home icon or save login info dialog
-            page.wait_for_selector("svg[aria-label='Home'], button:has-text('Save info')", timeout=10000)
+            # Extend timeout to handle slow page loads
+            page.wait_for_selector("svg[aria-label='Home'], button:has-text('Save info'), button:has-text('Continue')", timeout=30000)
             
-            # Handle "Save Login Info" dialog if it appears
+            # Handle unusual login attempt
+            unusual_login_button = page.query_selector("button:has-text('Continue')")
+            if unusual_login_button:
+                unusual_login_button.click()
+                print("Handled unusual login attempt by clicking 'Continue'")
+                page.wait_for_timeout(2000)  # Allow time for the next page to load
+                
+                # Wait for the code input field
+                print("Waiting for verification code input field...")
+                page.wait_for_selector("input[name='verificationCode']", timeout=30000)
+                
+                # Pause and ask the user for the code
+                verification_code = input("Enter the verification code sent to your email: ")
+                
+                # Fill in the verification code
+                page.fill("input[name='verificationCode']", verification_code)
+                page.click("button[type='submit']")
+                print("Entered verification code and submitted.")
+                
+            # Handle the "Save Login Info" dialog if it appears
             save_info_button = page.query_selector("button:has-text('Not Now')")
             if save_info_button:
                 save_info_button.click()
                 print("Handled 'Save Login Info' dialog")
             
-            # Handle notifications dialog if it appears
+            # Handle the notifications dialog if it appears
             page.wait_for_timeout(2000)
             notifications_button = page.query_selector("button:has-text('Not Now')")
             if notifications_button:
@@ -81,9 +100,12 @@ class InstaFollower:
                 
             print("Successfully logged in!")
             
-        except Exception as e:
-            print(f"Login failed: {str(e)}")
-            raise
+    except Exception as e:
+        print(f"Login failed: {str(e)}")
+        # Capture a screenshot for debugging
+        page.screenshot(path=f"login_error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+        raise
+
 
     def find_followers(self, page):
         print(f"Navigating to {self.target_account}'s profile...")
