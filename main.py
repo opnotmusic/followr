@@ -17,21 +17,19 @@ class InstaFollower:
                 "are set in your environment variables or GitHub Secrets."
             )
             
-        self.max_follows = 133
+        self.max_follows = 133  # Instagram daily limit with safety margin
         self.follow_count = 0
         print(f"Initializing bot for user: {self.username}")
         print(f"Target account to follow: {self.target_account}")
 
     def run(self):
         with sync_playwright() as p:
-            # Launch browser
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(
                 viewport={'width': 1280, 'height': 800},
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             )
             
-            # Create new page
             page = context.new_page()
             
             try:
@@ -40,9 +38,10 @@ class InstaFollower:
                 self.follow_users(page)
             except Exception as e:
                 print(f"An error occurred: {str(e)}")
-                # Save screenshot for debugging
-                page.screenshot(path=f"error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                page.screenshot(path=f"error_{timestamp}.png")
             finally:
+                context.close()
                 browser.close()
 
     def login(self, page):
@@ -52,45 +51,44 @@ class InstaFollower:
         page.goto("https://www.instagram.com/accounts/login/")
         page.wait_for_load_state("networkidle")
         
+        # Handle cookie dialog if present
+        try:
+            page.get_by_role("button", name="Allow all cookies").click()
+        except:
+            print("No cookie dialog found")
+        
         # Fill in login form
         print("Entering credentials...")
         page.fill("input[name='username']", self.username)
         page.fill("input[name='password']", self.password)
-        
-        # Click the login button
         page.click("button[type='submit']")
         
-        # Wait for navigation and handle dialogs
         try:
-            # Extend timeout to handle slow page loads
+            # Wait for various possible elements/dialogs
             page.wait_for_selector("svg[aria-label='Home'], button:has-text('Save info'), button:has-text('Continue')", timeout=30000)
             
             # Handle unusual login attempt
             unusual_login_button = page.query_selector("button:has-text('Continue')")
             if unusual_login_button:
                 unusual_login_button.click()
-                print("Handled unusual login attempt by clicking 'Continue'")
-                page.wait_for_timeout(2000)  # Allow time for the next page to load
+                print("Handled unusual login attempt")
+                page.wait_for_timeout(2000)
                 
-                # Wait for the code input field
-                print("Waiting for verification code input field...")
+                print("Waiting for verification code input...")
                 page.wait_for_selector("input[name='verificationCode']", timeout=30000)
-                
-                # Pause and ask the user for the code
                 verification_code = input("Enter the verification code sent to your email: ")
                 
-                # Fill in the verification code
                 page.fill("input[name='verificationCode']", verification_code)
                 page.click("button[type='submit']")
-                print("Entered verification code and submitted.")
-                
-            # Handle the "Save Login Info" dialog if it appears
+                print("Submitted verification code")
+            
+            # Handle "Save Login Info" dialog
             save_info_button = page.query_selector("button:has-text('Not Now')")
             if save_info_button:
                 save_info_button.click()
                 print("Handled 'Save Login Info' dialog")
             
-            # Handle the notifications dialog if it appears
+            # Handle notifications dialog
             page.wait_for_timeout(2000)
             notifications_button = page.query_selector("button:has-text('Not Now')")
             if notifications_button:
@@ -101,7 +99,6 @@ class InstaFollower:
                 
         except Exception as e:
             print(f"Login failed: {str(e)}")
-            # Capture a screenshot for debugging
             page.screenshot(path=f"login_error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
             raise
 
@@ -110,57 +107,54 @@ class InstaFollower:
         page.goto(f"https://www.instagram.com/{self.target_account}/")
         page.wait_for_load_state("networkidle")
         
-        # Click followers link - try multiple selectors
         print("Looking for followers link...")
         selectors = [
             "a:has-text('followers')",
             f"a[href='/{self.target_account}/followers/']",
-            "li:nth-child(2) a"  # Common position for followers link
+            "li:nth-child(2) a"
         ]
         
         for selector in selectors:
             try:
                 page.click(selector)
-                print(f"Found and clicked followers link using selector: {selector}")
+                print(f"Clicked followers link using: {selector}")
                 break
             except:
                 continue
                 
-        # Wait for followers modal
+        # Wait for followers modal and scroll
         page.wait_for_selector("div._aano", timeout=10000)
         print("Followers modal loaded")
         
-        # Scroll to load followers
-        print("Loading followers...")
         modal = page.locator("div._aano")
-        for i in range(min(10, (self.max_follows // 12) + 2)):
+        scroll_count = min(10, (self.max_follows // 12) + 2)
+        
+        for i in range(scroll_count):
             modal.evaluate("element => element.scrollTop = element.scrollHeight")
-            page.wait_for_timeout(random.uniform(500, 1000))  # Random delay between scrolls
-            print(f"Scroll {i + 1} completed")
+            page.wait_for_timeout(random.uniform(500, 1000))
+            print(f"Scroll {i + 1}/{scroll_count} completed")
 
     def follow_users(self, page):
-        print("Looking for follow buttons...")
+        print("Finding follow buttons...")
         follow_buttons = page.locator("button:has-text('Follow')")
         
-        count = follow_buttons.count()
-        count = min(count, self.max_follows)
+        count = min(follow_buttons.count(), self.max_follows)
         print(f"Found {count} potential accounts to follow")
         
         for i in range(count):
             if self.follow_count >= self.max_follows:
-                print(f"Reached daily follow limit of {self.max_follows}")
+                print(f"Reached daily limit of {self.max_follows}")
                 break
                 
             try:
                 button = follow_buttons.nth(i)
                 if button.is_visible():
-                    # Random delay before clicking
                     page.wait_for_timeout(random.uniform(500, 1500))
                     button.click()
                     self.follow_count += 1
-                    print(f"Followed account {self.follow_count} of {self.max_follows}")
+                    print(f"Followed {self.follow_count}/{self.max_follows}")
                     
-                    # Handle any dialogs that might appear
+                    # Handle potential dialogs
                     cancel_button = page.query_selector("button:has-text('Cancel')")
                     if cancel_button:
                         cancel_button.click()
@@ -170,14 +164,14 @@ class InstaFollower:
                 print(f"Error following user: {str(e)}")
                 continue
         
-        print(f"Finished following users. Total followed: {self.follow_count}")
+        print(f"Finished following users. Total: {self.follow_count}")
 
 def main():
     try:
         bot = InstaFollower()
         bot.run()
     except Exception as e:
-        print(f"Bot failed with error: {str(e)}")
+        print(f"Bot failed: {str(e)}")
         sys.exit(1)
 
 if __name__ == "__main__":
