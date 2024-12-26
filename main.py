@@ -142,6 +142,8 @@ class InstagramBot:
                 continue
                 
         # Wait for followers modal and scroll
+        page.screenshot(path="before_wait.png")
+        page.wait_for_load_state("networkidle")
         page.wait_for_selector("li.xl565be:nth-child(2) > div:nth-child(1) > a:nth-child(1)", timeout=30000)  # 30 seconds
         print("Followers modal loaded")
         
