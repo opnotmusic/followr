@@ -1,4 +1,3 @@
-# main.py
 import os
 import sys
 from playwright.sync_api import sync_playwright
@@ -46,66 +45,65 @@ class InstaFollower:
             finally:
                 browser.close()
 
-        def login(self, page):
-            print("Attempting to log in...")
+    def login(self, page):
+        print("Attempting to log in...")
+        
+        # Navigate to Instagram login page
+        page.goto("https://www.instagram.com/accounts/login/")
+        page.wait_for_load_state("networkidle")
+        
+        # Fill in login form
+        print("Entering credentials...")
+        page.fill("input[name='username']", self.username)
+        page.fill("input[name='password']", self.password)
+        
+        # Click the login button
+        page.click("button[type='submit']")
+        
+        # Wait for navigation and handle dialogs
+        try:
+            # Extend timeout to handle slow page loads
+            page.wait_for_selector("svg[aria-label='Home'], button:has-text('Save info'), button:has-text('Continue')", timeout=30000)
             
-            # Navigate to Instagram login page
-            page.goto("https://www.instagram.com/accounts/login/")
-            page.wait_for_load_state("networkidle")
-            
-            # Fill in login form
-            print("Entering credentials...")
-            page.fill("input[name='username']", self.username)
-            page.fill("input[name='password']", self.password)
-            
-            # Click the login button
-            page.click("button[type='submit']")
-            
-            # Wait for navigation and handle dialogs
-            try:
-                # Extend timeout to handle slow page loads
-                page.wait_for_selector("svg[aria-label='Home'], button:has-text('Save info'), button:has-text('Continue')", timeout=30000)
+            # Handle unusual login attempt
+            unusual_login_button = page.query_selector("button:has-text('Continue')")
+            if unusual_login_button:
+                unusual_login_button.click()
+                print("Handled unusual login attempt by clicking 'Continue'")
+                page.wait_for_timeout(2000)  # Allow time for the next page to load
                 
-                # Handle unusual login attempt
-                unusual_login_button = page.query_selector("button:has-text('Continue')")
-                if unusual_login_button:
-                    unusual_login_button.click()
-                    print("Handled unusual login attempt by clicking 'Continue'")
-                    page.wait_for_timeout(2000)  # Allow time for the next page to load
-                    
-                    # Wait for the code input field
-                    print("Waiting for verification code input field...")
-                    page.wait_for_selector("input[name='verificationCode']", timeout=30000)
-                    
-                    # Pause and ask the user for the code
-                    verification_code = input("Enter the verification code sent to your email: ")
-                    
-                    # Fill in the verification code
-                    page.fill("input[name='verificationCode']", verification_code)
-                    page.click("button[type='submit']")
-                    print("Entered verification code and submitted.")
-                    
-                # Handle the "Save Login Info" dialog if it appears
-                save_info_button = page.query_selector("button:has-text('Not Now')")
-                if save_info_button:
-                    save_info_button.click()
-                    print("Handled 'Save Login Info' dialog")
+                # Wait for the code input field
+                print("Waiting for verification code input field...")
+                page.wait_for_selector("input[name='verificationCode']", timeout=30000)
                 
-                # Handle the notifications dialog if it appears
-                page.wait_for_timeout(2000)
-                notifications_button = page.query_selector("button:has-text('Not Now')")
-                if notifications_button:
-                    notifications_button.click()
-                    print("Handled notifications dialog")
-                    
-                print("Successfully logged in!")
+                # Pause and ask the user for the code
+                verification_code = input("Enter the verification code sent to your email: ")
+                
+                # Fill in the verification code
+                page.fill("input[name='verificationCode']", verification_code)
+                page.click("button[type='submit']")
+                print("Entered verification code and submitted.")
+                
+            # Handle the "Save Login Info" dialog if it appears
+            save_info_button = page.query_selector("button:has-text('Not Now')")
+            if save_info_button:
+                save_info_button.click()
+                print("Handled 'Save Login Info' dialog")
+            
+            # Handle the notifications dialog if it appears
+            page.wait_for_timeout(2000)
+            notifications_button = page.query_selector("button:has-text('Not Now')")
+            if notifications_button:
+                notifications_button.click()
+                print("Handled notifications dialog")
+                
+            print("Successfully logged in!")
                 
         except Exception as e:
             print(f"Login failed: {str(e)}")
             # Capture a screenshot for debugging
             page.screenshot(path=f"login_error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
             raise
-    
 
     def find_followers(self, page):
         print(f"Navigating to {self.target_account}'s profile...")
@@ -144,7 +142,8 @@ class InstaFollower:
         print("Looking for follow buttons...")
         follow_buttons = page.locator("button:has-text('Follow')")
         
-        count = min(follow_buttons.count(), self.max_follows)
+        count = follow_buttons.count()
+        count = min(count, self.max_follows)
         print(f"Found {count} potential accounts to follow")
         
         for i in range(count):
