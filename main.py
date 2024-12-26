@@ -142,10 +142,10 @@ class InstagramBot:
                 continue
                 
         # Wait for followers modal and scroll
-        page.wait_for_selector("div._aano", timeout=10000)
+        page.wait_for_selector("li.xl565be:nth-child(2) > div:nth-child(1) > a:nth-child(1)", timeout=30000)  # 30 seconds
         print("Followers modal loaded")
         
-        modal = page.locator("div._aano")
+        modal = page.locator("li.xl565be:nth-child(2) > div:nth-child(1) > a:nth-child(1)")
         scroll_count = min(10, (self.max_follows // 12) + 2)
         
         for i in range(scroll_count):
