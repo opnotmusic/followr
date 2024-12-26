@@ -20,9 +20,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        playwright install chromium
-    
+        npm install playwright@latest
+        npx playwright install chromium firefox webkit
     - name: Run bot
       env:
         INSTAGRAM_USERNAME: ${{ secrets.INSTAGRAM_USERNAME }}
