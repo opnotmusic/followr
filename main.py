@@ -1,14 +1,15 @@
 import os
+import json
 import sys
 from playwright.sync_api import sync_playwright
 import time
 from datetime import datetime
 import random
 
-class InstaFollower:
-    def __init__(self):
-        self.username = os.environ.get('INSTAGRAM_USERNAME')
-        self.password = os.environ.get('INSTAGRAM_PASSWORD')
+class InstagramBot:
+    def __init__(self, username, password):
+        self.username = username
+        self.password = password
         self.target_account = os.environ.get('TARGET_ACCOUNT', 'davidguetta')
         
         if not self.username or not self.password:
@@ -24,7 +25,7 @@ class InstaFollower:
 
     def run(self):
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(headless=False)
             context = browser.new_context(
                 viewport={'width': 1280, 'height': 800},
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -46,7 +47,19 @@ class InstaFollower:
 
     def login(self, page):
         print("Attempting to log in...")
-        
+
+        # Check for cached session data
+        cache_file = "session_cache.json"
+        if os.path.exists(cache_file):
+            print("Loading session from cache...")
+            with open(cache_file, 'r') as f:
+                session_data = json.load(f)
+                # Restore cookies or session data
+                for cookie in session_data.get('cookies', []):
+                    page.context.add_cookies([cookie])
+                print("Session loaded from cache.")
+                return  # Skip login if session is valid
+                
         # Navigate to Instagram login page
         page.goto("https://www.instagram.com/accounts/login/")
         page.wait_for_load_state("networkidle")
@@ -81,7 +94,13 @@ class InstaFollower:
                 page.fill("input[name='verificationCode']", verification_code)
                 page.click("button[type='submit']")
                 print("Submitted verification code")
-            
+
+            # Save session data (cookies) after successful login
+            cookies = page.context.cookies()
+            with open(cache_file, 'w') as f:
+                json.dump({'cookies': cookies}, f)
+
+            print("Session cached successfully.")
             # Handle "Save Login Info" dialog
             save_info_button = page.query_selector("button:has-text('Not Now')")
             if save_info_button:
@@ -175,4 +194,8 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    username = os.environ.get('INSTAGRAM_USERNAME')
+    password = os.environ.get('INSTAGRAM_PASSWORD')
+    
+    bot = InstagramBot(username, password)
+    bot.run()
