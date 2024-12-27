@@ -121,7 +121,7 @@ class SocialMediaBot:
                 page.fill("input[name='password']", self.password)
                 page.click("div[data-testid='LoginForm_Login_Button']")
                 break
-            except Exception as e:
+             except Exception as e:
                 print(f"Attempt {attempt + 1}: Waiting for Twitter password input failed: {str(e)}")
                 time.sleep(2)
 
