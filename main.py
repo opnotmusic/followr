@@ -69,7 +69,7 @@ class SocialMediaBot:
 
         page.goto(self.platform_urls[platform])
         page.wait_for_load_state("networkidle")
-        
+
         if platform in ['instagram', 'threads']:
             self._meta_login(page)
         elif platform == 'twitter':
@@ -78,7 +78,7 @@ class SocialMediaBot:
             self._tiktok_login(page)
         else:
             self._soundcloud_login(page)
-            
+
         cookies = page.context.cookies()
         with open(cache_file, 'w') as f:
             json.dump({'cookies': cookies}, f)
@@ -97,16 +97,22 @@ class SocialMediaBot:
         self._handle_dialogs(page)
 
     def _twitter_login(self, page):
+        page.wait_for_selector("input[autocomplete='username']", timeout=60000)  # Increased timeout
         page.fill("input[autocomplete='username']", self.username)
         page.click("span:has-text('Next')")
+        
+        page.wait_for_selector("input[name='password']", timeout=60000)  # Increased timeout
         page.fill("input[name='password']", self.password)
         page.click("div[data-testid='LoginForm_Login_Button']")
         
         self._handle_2fa(page)
 
     def _tiktok_login(self, page):
+        page.wait_for_selector("button:has-text('Use phone / email / username')", timeout=60000)  # Increased timeout
         page.click("button:has-text('Use phone / email / username')")
         page.click("a:has-text('Log in with email or username')")
+        
+        page.wait_for_selector("input[name='username']", timeout=60000)  # Increased timeout
         page.fill("input[name='username']", self.username)
         page.fill("input[type='password']", self.password)
         page.click("button[type='submit']")
@@ -115,11 +121,14 @@ class SocialMediaBot:
 
     def _soundcloud_login(self, page):
         try:
+            page.wait_for_selector("button:has-text('Accept cookies')", timeout= 60000)  # Increased timeout
             page.click("button:has-text('Accept cookies')")
         except:
             pass
             
+        page.wait_for_selector("button:has-text('Continue with email')", timeout=60000)  # Increased timeout
         page.click("button:has-text('Continue with email')")
+        page.wait_for_selector("input[name='email']", timeout=60000)  # Increased timeout
         page.fill("input[name='email']", self.username)
         page.fill("input[name='password']", self.password)
         page.click("button[type='submit']")
@@ -222,7 +231,8 @@ class SocialMediaBot:
             except Exception as e:
                 print(f"Error following user: {str(e)}")
 
-if __name__ == "__main__":
+if __name__ ```python
+== "__main__":
     try:
         bot = SocialMediaBot()
         bot.run()
