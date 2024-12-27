@@ -6,165 +6,218 @@ import time
 from datetime import datetime
 import random
 
-class InstagramBot:
-    def __init__(self, username, password):
-        self.username = username
-        self.password = password
-        self.target_account = os.environ.get('TARGET_ACCOUNT', 'davidguetta')
+class SocialMediaBot:
+    def __init__(self):
+        self.credentials = {
+            'instagram': {
+                'username': os.environ.get('INSTAGRAM_USERNAME'),
+                'password': os.environ.get('INSTAGRAM_PASSWORD'),
+                'target': os.environ.get('INSTAGRAM_TARGET', 'davidguetta'),
+                'max_follows': 133
+            },
+            'threads': {
+                'username': os.environ.get('THREADS_USERNAME'),
+                'password': os.environ.get('THREADS_PASSWORD'),
+                'target': os.environ.get('THREADS_TARGET', 'davidguetta'),
+                'max_follows': 100
+            },
+            'twitter': {
+                'username': os.environ.get('TWITTER_USERNAME'),
+                'password': os.environ.get('TWITTER_PASSWORD'),
+                'target': os.environ.get('TWITTER_TARGET', 'davidguetta'),
+                'max_follows': 400
+            },
+            'tiktok': {
+                'username': os.environ.get('TIKTOK_USERNAME'),
+                'password': os.environ.get('TIKTOK_PASSWORD'),
+                'target': os.environ.get('TIKTOK_TARGET', 'davidguetta'),
+                'max_follows': 200
+            }
+        }
         
-        if not self.username or not self.password:
-            raise ValueError(
-                "Missing credentials! Ensure INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD "
-                "are set in your environment variables or GitHub Secrets."
-            )
-            
-        self.max_follows = 133  # Instagram daily limit with safety margin
-        self.follow_count = 0
-        print(f"Initializing bot for user: {self.username}")
-        print(f"Target account to follow: {self.target_account}")
+        self.platform_urls = {
+            'instagram': 'https://www.instagram.com/accounts/login/',
+            'threads': 'https://www.threads.net/login',
+            'twitter': 'https://twitter.com/i/flow/login',
+            'tiktok': 'https://www.tiktok.com/login'
+        }
+        
+        self.follow_counts = {platform: 0 for platform in self.credentials.keys()}
 
     def run(self):
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(
                 viewport={'width': 1280, 'height': 800},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             )
             
-            page = context.new_page()
+            for platform in self.credentials.keys():
+                if not all([self.credentials[platform]['username'], 
+                          self.credentials[platform]['password']]):
+                    print(f"Skipping {platform} - missing credentials")
+                    continue
+                    
+                print(f"\nStarting {platform} automation...")
+                page = context.new_page()
+                
+                try:
+                    self.login(page, platform)
+                    self.find_followers(page, platform)
+                    self.follow_users(page, platform)
+                except Exception as e:
+                    print(f"Error on {platform}: {str(e)}")
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    page.screenshot(path=f"{platform}_error_{timestamp}.png")
+                finally:
+                    page.close()
             
-            try:
-                self.login(page)
-                self.find_followers(page)
-                self.follow_users(page)
-            except Exception as e:
-                print(f"An error occurred: {str(e)}")
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                page.screenshot(path=f"error_{timestamp}.png")
-            finally:
-                context.close()
-                browser.close()
+            context.close()
+            browser.close()
 
-    def login(self, page):
-        print("Attempting to log in...")
-
-        # Check for cached session data
-        cache_file = "session_cache.json"
+    def login(self, page, platform):
+        print(f"Logging into {platform}...")
+        
+        # Check for cached session
+        cache_file = f"{platform}_session_cache.json"
         if os.path.exists(cache_file):
-            print("Loading session from cache...")
             with open(cache_file, 'r') as f:
                 session_data = json.load(f)
-                # Restore cookies or session data
-                for cookie in session_data.get('cookies', []):
-                    page.context.add_cookies([cookie])
-                print("Session loaded from cache.")
-                return  # Skip login if session is valid
-                
-        # Navigate to Instagram login page
-        page.goto("https://www.instagram.com/accounts/login/")
+                page.context.add_cookies(session_data.get('cookies', []))
+                return
+
+        page.goto(self.platform_urls[platform])
         page.wait_for_load_state("networkidle")
         
-        # Handle cookie dialog if present
+        if platform == 'instagram' or platform == 'threads':
+            self._instagram_login(page, platform)
+        elif platform == 'twitter':
+            self._twitter_login(page)
+        elif platform == 'tiktok':
+            self._tiktok_login(page)
+            
+        # Cache session
+        cookies = page.context.cookies()
+        with open(cache_file, 'w') as f:
+            json.dump({'cookies': cookies}, f)
+
+    def _instagram_login(self, page, platform):
         try:
             page.get_by_role("button", name="Allow all cookies").click()
         except:
-            print("No cookie dialog found")
-        
-        # Fill in login form
-        print("Entering credentials...")
-        page.fill("input[name='username']", self.username)
-        page.fill("input[name='password']", self.password)
+            pass
+            
+        creds = self.credentials[platform]
+        page.fill("input[name='username']", creds['username'])
+        page.fill("input[name='password']", creds['password'])
         page.click("button[type='submit']")
         
+        self._handle_2fa(page)
+        self._handle_dialogs(page)
+
+    def _twitter_login(self, page):
+        creds = self.credentials['twitter']
+        page.fill("input[autocomplete='username']", creds['username'])
+        page.click("span:has-text('Next')")
+        page.fill("input[name='password']", creds['password'])
+        page.click("div[data-testid='LoginForm_Login_Button']")
+        
+        self._handle_2fa(page)
+
+    def _tiktok_login(self, page):
+        creds = self.credentials['tiktok']
+        page.click("button:has-text('Use phone / email / username')")
+        page.click("a:has-text('Log in with email or username')")
+        page.fill("input[name='username']", creds['username'])
+        page.fill("input[type='password']", creds['password'])
+        page.click("button[type='submit']")
+        
+        self._handle_2fa(page)
+
+    def _handle_2fa(self, page):
         try:
-            # Wait for various possible elements/dialogs
-            page.wait_for_selector("svg[aria-label='Home'], button:has-text('Save info'), button:has-text('Continue')", timeout=30000)
-            
-            # Handle unusual login attempt
-            unusual_login_button = page.query_selector("button:has-text('Continue')")
-            if unusual_login_button:
-                unusual_login_button.click()
-                print("Handled unusual login attempt")
-                page.wait_for_timeout(2000)
-                
-                print("Waiting for verification code input...")
-                page.wait_for_selector("input[name='verificationCode']", timeout=30000)
-                verification_code = input("Enter the verification code sent to your email: ")
-                
-                page.fill("input[name='verificationCode']", verification_code)
+            if page.query_selector("input[name='verificationCode']"):
+                code = input("Enter 2FA code: ")
+                page.fill("input[name='verificationCode']", code)
                 page.click("button[type='submit']")
-                print("Submitted verification code")
+        except:
+            pass
 
-            # Save session data (cookies) after successful login
-            cookies = page.context.cookies()
-            with open(cache_file, 'w') as f:
-                json.dump({'cookies': cookies}, f)
+    def _handle_dialogs(self, page):
+        dialogs = {
+            "Not Now": ["button:has-text('Not Now')", "button:has-text('Skip')", "button:has-text('Maybe Later')"],
+            "Cancel": ["button:has-text('Cancel')", "button:has-text('Close')"]
+        }
+        
+        for dialog_type, selectors in dialogs.items():
+            for selector in selectors:
+                try:
+                    button = page.query_selector(selector)
+                    if button:
+                        button.click()
+                        print(f"Handled {dialog_type} dialog")
+                        page.wait_for_timeout(1000)
+                except:
+                    continue
 
-            print("Session cached successfully.")
-            # Handle "Save Login Info" dialog
-            save_info_button = page.query_selector("button:has-text('Not Now')")
-            if save_info_button:
-                save_info_button.click()
-                print("Handled 'Save Login Info' dialog")
+    def find_followers(self, page, platform):
+        target = self.credentials[platform]['target']
+        print(f"Finding followers for {target} on {platform}...")
+        
+        if platform == 'instagram' or platform == 'threads':
+            page.goto(f"https://www.instagram.com/{target}/")
+        elif platform == 'twitter':
+            page.goto(f"https://twitter.com/{target}/followers")
+        elif platform == 'tiktok':
+            page.goto(f"https://www.tiktok.com/@{target}/followers")
             
-            # Handle notifications dialog
-            page.wait_for_timeout(2000)
-            notifications_button = page.query_selector("button:has-text('Not Now')")
-            if notifications_button:
-                notifications_button.click()
-                print("Handled notifications dialog")
-                
-            print("Successfully logged in!")
-                
-        except Exception as e:
-            print(f"Login failed: {str(e)}")
-            page.screenshot(path=f"login_error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
-            raise
-
-    def find_followers(self, page):
-        print(f"Navigating to {self.target_account}'s profile...")
-        page.goto(f"https://www.instagram.com/{self.target_account}/")
         page.wait_for_load_state("networkidle")
         
-        print("Looking for followers link...")
-        selectors = [
-            "a:has-text('followers')",
-            f"a[href='/{self.target_account}/followers/']",
-            "li:nth-child(2) a"
-        ]
+        # Platform-specific selectors for followers
+        selectors = {
+            'instagram': ["a:has-text('followers')", f"a[href='/{target}/followers/']"],
+            'threads': ["a:has-text('followers')", f"a[href='/{target}/followers/']"],
+            'twitter': ["[data-testid='followers']"],
+            'tiktok': ["span:has-text('Followers')"]
+        }
         
-        for selector in selectors:
+        for selector in selectors.get(platform, []):
             try:
                 page.click(selector)
-                print(f"Clicked followers link using: {selector}")
                 break
             except:
                 continue
                 
-        # Wait for followers modal and scroll
-        page.screenshot(path="before_wait.png")
-        page.wait_for_load_state("networkidle")
-        page.wait_for_selector("li.xl565be:nth-child(2) > div:nth-child(1) > a:nth-child(1)", timeout=30000)  # 30 seconds
-        print("Followers modal loaded")
-        
-        modal = page.locator("li.xl565be:nth-child(2) > div:nth-child(1) > a:nth-child(1)")
-        scroll_count = min(10, (self.max_follows // 12) + 2)
+        page.wait_for_timeout(2000)
+        self._scroll_followers(page, platform)
+
+    def _scroll_followers(self, page, platform):
+        max_follows = self.credentials[platform]['max_follows']
+        scroll_count = min(10, (max_follows // 12) + 2)
         
         for i in range(scroll_count):
-            modal.evaluate("element => element.scrollTop = element.scrollHeight")
+            page.keyboard.press('PageDown')
             page.wait_for_timeout(random.uniform(500, 1000))
-            print(f"Scroll {i + 1}/{scroll_count} completed")
+            print(f"Scroll {i + 1}/{scroll_count}")
 
-    def follow_users(self, page):
-        print("Finding follow buttons...")
-        follow_buttons = page.locator("button:has-text('Follow')")
+    def follow_users(self, page, platform):
+        max_follows = self.credentials[platform]['max_follows']
         
-        count = min(follow_buttons.count(), self.max_follows)
-        print(f"Found {count} potential accounts to follow")
+        # Platform-specific follow button selectors
+        follow_selectors = {
+            'instagram': "button:has-text('Follow')",
+            'threads': "button:has-text('Follow')",
+            'twitter': "[data-testid='follow']",
+            'tiktok': "button:has-text('Follow')"
+        }
+        
+        follow_buttons = page.locator(follow_selectors[platform])
+        count = min(follow_buttons.count(), max_follows)
+        
+        print(f"Found {count} accounts to follow on {platform}")
         
         for i in range(count):
-            if self.follow_count >= self.max_follows:
-                print(f"Reached daily limit of {self.max_follows}")
+            if self.follow_counts[platform] >= max_follows:
                 break
                 
             try:
@@ -172,32 +225,20 @@ class InstagramBot:
                 if button.is_visible():
                     page.wait_for_timeout(random.uniform(500, 1500))
                     button.click()
-                    self.follow_count += 1
-                    print(f"Followed {self.follow_count}/{self.max_follows}")
-                    
-                    # Handle potential dialogs
-                    cancel_button = page.query_selector("button:has-text('Cancel')")
-                    if cancel_button:
-                        cancel_button.click()
-                        print("Handled dialog")
-                        
+                    self.follow_counts[platform] += 1
+                    print(f"Followed {self.follow_counts[platform]}/{max_follows} on {platform}")
+                    self._handle_dialogs(page)
             except Exception as e:
-                print(f"Error following user: {str(e)}")
+                print(f"Error following user on {platform}: {str(e)}")
                 continue
-        
-        print(f"Finished following users. Total: {self.follow_count}")
 
 def main():
     try:
-        bot = InstaFollower()
+        bot = SocialMediaBot()
         bot.run()
     except Exception as e:
         print(f"Bot failed: {str(e)}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    username = os.environ.get('INSTAGRAM_USERNAME')
-    password = os.environ.get('INSTAGRAM_PASSWORD')
-    
-    bot = InstagramBot(username, password)
-    bot.run()
+    main()
