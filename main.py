@@ -51,13 +51,18 @@ class SocialMediaBot:
                     self.follow_users(page, platform)
                 except Exception as e:
                     print(f"Error on {platform}: {str(e)}")
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    page.screenshot(path=f"{platform}_error_{timestamp}.png")
+                    self.capture_screenshot(page, platform, "error")
                 finally:
                     page.close()
             
             context.close()
             browser.close()
+
+    def capture_screenshot(self, page, platform, error_type):
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        screenshot_path = f"{platform}_{error_type}_{timestamp}.png"
+        page.screenshot(path=screenshot_path)
+        print(f"Screenshot saved: {screenshot_path}")
 
     def login(self, page, platform):
         cache_file = f"{platform}_session_cache.json"
@@ -97,43 +102,82 @@ class SocialMediaBot:
         self._handle_dialogs(page)
 
     def _twitter_login(self, page):
-        page.wait_for_selector("input[autocomplete='username']", timeout=60000)  # Increased timeout
-        page.fill("input[autocomplete='username']", self.username)
-        page.click("span:has-text('Next')")
-        
-        page.wait_for_selector("input[name='password']", timeout=60000)  # Increased timeout
-        page.fill("input[name='password']", self.password)
-        page.click("div[data-testid='LoginForm_Login_Button']")
-        
-        self._handle_2fa(page)
+        for attempt in range(5):
+            try:
+                page.wait_for_selector("input[autocomplete='username']", timeout=60000)
+                page.fill("input[autocomplete='username']", self.username)
+                page.click("span:has-text('Next')")
+                break
+            except Exception as e:
+                print(f"Attempt {attempt + 1}: Waiting for Twitter username input failed: {str(e)}")page.wait_for_selector("input[autocomplete='username']", timeout=60000)  # Increased timeout
+                self.capture_screenshot(page, "twitter", "username_input_error")
+                time.sleep(2)
+        for attempt in range(5):
+            try:
+                page.wait_for_selector("input[name='password']", timeout=60000)
+                page.fill("input[name='password']", self.password)
+                page.click("div[data-testid='LoginForm_Login_Button']")
+                break
+            except Exception as e:
+                print(f"Attempt {attempt + 1}: Waiting for Twitter password input failed: {str(e)}")self.capture_screenshot(page, "twitter", "password_input_error")
+                time.sleep(2)
 
     def _tiktok_login(self, page):
-        page.wait_for_selector("button:has-text('Use phone / email / username')", timeout=60000)  # Increased timeout
-        page.click("button:has-text('Use phone / email / username')")
-        page.click("a:has-text('Log in with email or username')")
-        
-        page.wait_for_selector("input[name='username']", timeout=60000)  # Increased timeout
-        page.fill("input[name='username']", self.username)
-        page.fill("input[type='password']", self.password)
-        page.click("button[type='submit']")
-        
-        self._handle_2fa(page)
+        for attempt in range(5):
+            try:
+                page.wait_for_selector("button:has-text('Use phone / email / username')", timeout=60000)
+                page.click("button:has-text('Use phone / email / username')")
+                page.click("a:has-text('Log in with email or username')")
+                break
+            except Exception as e:
+                print(f"Attempt {attempt + 1}: Waiting for TikTok login button failed: {str(e)}")
+                self.capture_screenshot(page, "tiktok", "login_button_error")
+                time.sleep(2)
+
+        for attempt in range(5):
+            try:
+                page.wait_for_selector("input[name='username']", timeout=60000)
+                page.fill("input[name='username']", self.username)
+                page.fill("input[type='password']", self.password)
+                page.click("button[type='submit']")
+                break
+            except Exception as e:
+                print(f"Attempt {attempt + 1}: Waiting for TikTok username input failed: {str(e)}")
+                self.capture_screenshot(page, "tiktok", "username_input_error")
+                time.sleep(2)
 
     def _soundcloud_login(self, page):
-        try:
-            page.wait_for_selector("button:has-text('Accept cookies')", timeout= 60000)  # Increased timeout
-            page.click("button:has-text('Accept cookies')")
-        except:
-            pass
-            
-        page.wait_for_selector("button:has-text('Continue with email')", timeout=60000)  # Increased timeout
-        page.click("button:has-text('Continue with email')")
-        page.wait_for_selector("input[name='email']", timeout=60000)  # Increased timeout
-        page.fill("input[name='email']", self.username)
-        page.fill("input[name='password']", self.password)
-        page.click("button[type='submit']")
-        
-        self._handle_2fa(page)
+        for attempt in range(5):
+            try:
+                page.wait_for_selector("button:has-text('Accept cookies')", timeout=60000)
+                page.click("button:has-text('Accept cookies')")
+                break
+            except Exception as e:
+                print(f"Attempt {attempt + 1}: Waiting for SoundCloud accept cookies button failed: {str(e)}")
+                self.capture_screenshot(page, "soundcloud", "accept_cookies_error")
+                time.sleep(2)
+
+        for attempt in range(5):
+            try:
+                page.wait_for_selector("button:has-text('Continue with email')", timeout=60000)
+                page.click("button:has-text('Continue with email')")
+                break
+            except Exception as e:
+                print(f"Attempt {attempt + 1}: Waiting for SoundCloud continue with email button failed: {str(e)}")
+                self.capture_screenshot(page, "soundcloud", "continue_email_error")
+                time.sleep(2)
+
+        for attempt in range(5):
+            try:
+                page.wait_for_selector("input[name='email']", timeout=60000)
+                page.fill("input[name='email']", self.username)
+                page.fill("input[name='password']", self.password)
+                page.click("button[type='submit']")
+                break
+            except Exception as e:
+                print(f"Attempt {attempt + 1}: Waiting for SoundCloud email input failed: {str(e)}")
+                self.capture_screenshot(page, "soundcloud", "email_input_error")
+                time.sleep(2)
 
     def _handle_2fa(self, page):
         if page.query_selector("input[name='verificationCode']"):
@@ -177,8 +221,10 @@ class SocialMediaBot:
             try:
                 page.click(selector)
                 break
-            except:
-                continue
+            except Exception as e:
+                print(f"Error finding followers on {platform}: {str(e)}")
+                self.capture_screenshot(page, platform, "find_followers_error")
+                continue              
                 
         page.wait_for_timeout(2000)
         self._scroll_followers(page, platform)
