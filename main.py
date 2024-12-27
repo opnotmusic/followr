@@ -220,8 +220,7 @@ class SocialMediaBot:
                 continue
                 
         page.wait_for_timeout(2000)
-        self 
-        ._scroll_followers(page, platform)
+        self._scroll_followers(page, platform)
 
     def _scroll_followers(self, page, platform):
         scroll_count = min(10, (self.max_follows[platform] // 12) + 2)
