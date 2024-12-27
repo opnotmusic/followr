@@ -10,22 +10,17 @@ class SocialMediaBot:
     def __init__(self):
         self.username = os.environ.get('INSTAGRAM_USERNAME')
         self.password = os.environ.get('INSTAGRAM_PASSWORD')
+        self.target = os.environ.get('TARGET_ACCOUNT', 'davidguetta')
         
         if not self.username or not self.password:
             raise ValueError("Missing credentials! Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD")
         
-        self.targets = {
-            'instagram': os.environ.get('INSTAGRAM_TARGET', 'davidguetta'),
-            'threads': os.environ.get('THREADS_TARGET', 'davidguetta'),
-            'twitter': os.environ.get('TWITTER_TARGET', 'davidguetta'),
-            'tiktok': os.environ.get('TIKTOK_TARGET', 'davidguetta')
-        }
-        
+        # Reduced limits by 25%
         self.max_follows = {
-            'instagram': 133,
-            'threads': 100,
-            'twitter': 400,
-            'tiktok': 200
+            'instagram': 100,  # from 133
+            'threads': 75,    # from 100
+            'twitter': 300,   # from 400
+            'tiktok': 150    # from 200
         }
         
         self.platform_urls = {
@@ -35,19 +30,20 @@ class SocialMediaBot:
             'tiktok': 'https://www.tiktok.com/login'
         }
         
-        self.follow_counts = {platform: 0 for platform in self.targets.keys()}
+        self.follow_counts = {platform: 0 for platform in self.max_follows.keys()}
 
     def run(self):
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(viewport={'width': 1280, 'height': 800})
             
-            for platform in self.targets.keys():
-                print(f"\nStarting {platform} automation...")
+            for platform in self.max_follows.keys():
                 page = context.new_page()
-                
                 try:
-                    self._handle_platform(page, platform)
+                    print(f"\nProcessing {platform}...")
+                    self.login(page, platform)
+                    self.find_followers(page, platform)
+                    self.follow_users(page, platform)
                 except Exception as e:
                     print(f"Error on {platform}: {str(e)}")
                     page.screenshot(path=f"{platform}_error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
@@ -57,13 +53,7 @@ class SocialMediaBot:
             context.close()
             browser.close()
 
-    def _handle_platform(self, page, platform):
-        self.login(page, platform)
-        self.find_followers(page, platform)
-        self.follow_users(page, platform)
-
     def login(self, page, platform):
-        print(f"Logging into {platform}...")
         cache_file = f"{platform}_session_cache.json"
         
         if os.path.exists(cache_file):
@@ -90,11 +80,9 @@ class SocialMediaBot:
             page.get_by_role("button", name="Allow all cookies").click()
         except:
             pass
-            
         page.fill("input[name='username']", self.username)
         page.fill("input[name='password']", self.password)
         page.click("button[type='submit']")
-        
         self._handle_2fa(page)
         self._handle_dialogs(page)
 
@@ -103,7 +91,6 @@ class SocialMediaBot:
         page.click("span:has-text('Next')")
         page.fill("input[name='password']", self.password)
         page.click("div[data-testid='LoginForm_Login_Button']")
-        
         self._handle_2fa(page)
 
     def _tiktok_login(self, page):
@@ -112,7 +99,6 @@ class SocialMediaBot:
         page.fill("input[name='username']", self.username)
         page.fill("input[type='password']", self.password)
         page.click("button[type='submit']")
-        
         self._handle_2fa(page)
 
     def _handle_2fa(self, page):
@@ -132,22 +118,19 @@ class SocialMediaBot:
                 continue
 
     def find_followers(self, page, platform):
-        target = self.targets[platform]
-        print(f"Finding followers for {target}")
-        
         urls = {
-            'instagram': f"https://www.instagram.com/{target}/",
-            'threads': f"https://www.threads.net/{target}/",
-            'twitter': f"https://twitter.com/{target}/followers",
-            'tiktok': f"https://www.tiktok.com/@{target}/followers"
+            'instagram': f"https://www.instagram.com/{self.target}/",
+            'threads': f"https://www.threads.net/{self.target}/",
+            'twitter': f"https://twitter.com/{self.target}/followers",
+            'tiktok': f"https://www.tiktok.com/@{self.target}/followers"
         }
         
         page.goto(urls[platform])
         page.wait_for_load_state("networkidle")
         
         selectors = {
-            'instagram': ["a:has-text('followers')", f"a[href='/{target}/followers/']"],
-            'threads': ["a:has-text('followers')", f"a[href='/{target}/followers/']"],
+            'instagram': [f"a:has-text('followers')", f"a[href='/{self.target}/followers/']"],
+            'threads': [f"a:has-text('followers')", f"a[href='/{self.target}/followers/']"],
             'twitter': ["[data-testid='followers']"],
             'tiktok': ["span:has-text('Followers')"]
         }
@@ -169,14 +152,14 @@ class SocialMediaBot:
             page.wait_for_timeout(random.uniform(500, 1000))
 
     def follow_users(self, page, platform):
-        follow_selectors = {
+        selectors = {
             'instagram': "button:has-text('Follow')",
             'threads': "button:has-text('Follow')",
             'twitter': "[data-testid='follow']",
             'tiktok': "button:has-text('Follow')"
         }
         
-        buttons = page.locator(follow_selectors[platform])
+        buttons = page.locator(selectors[platform])
         count = min(buttons.count(), self.max_follows[platform])
         
         for i in range(count):
