@@ -231,8 +231,7 @@ class SocialMediaBot:
             except Exception as e:
                 print(f"Error following user: {str(e)}")
 
-if __name__ ```python
-== "__main__":
+if __name__ == "__main__":
     try:
         bot = SocialMediaBot()
         bot.run()
