@@ -15,19 +15,20 @@ class SocialMediaBot:
         if not self.username or not self.password:
             raise ValueError("Missing credentials! Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD")
         
-        # Reduced limits by 25%
         self.max_follows = {
-            'instagram': 100,  # from 133
-            'threads': 75,    # from 100
-            'twitter': 300,   # from 400
-            'tiktok': 150    # from 200
+            'instagram': 100,
+            'threads': 75,
+            'twitter': 300,
+            'tiktok': 150,
+            'soundcloud': 75
         }
         
         self.platform_urls = {
             'instagram': 'https://www.instagram.com/accounts/login/',
             'threads': 'https://www.threads.net/login',
             'twitter': 'https://twitter.com/i/flow/login',
-            'tiktok': 'https://www.tiktok.com/login'
+            'tiktok': 'https://www.tiktok.com/login',
+            'soundcloud': 'https://soundcloud.com/signin'
         }
         
         self.follow_counts = {platform: 0 for platform in self.max_follows.keys()}
@@ -35,18 +36,23 @@ class SocialMediaBot:
     def run(self):
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            context = browser.new_context(viewport={'width': 1280, 'height': 800})
+            context = browser.new_context(
+                viewport={'width': 1280, 'height': 800},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            )
             
             for platform in self.max_follows.keys():
+                print(f"\nProcessing {platform}...")
                 page = context.new_page()
+                
                 try:
-                    print(f"\nProcessing {platform}...")
                     self.login(page, platform)
                     self.find_followers(page, platform)
                     self.follow_users(page, platform)
                 except Exception as e:
                     print(f"Error on {platform}: {str(e)}")
-                    page.screenshot(path=f"{platform}_error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    page.screenshot(path=f"{platform}_error_{timestamp}.png")
                 finally:
                     page.close()
             
@@ -68,8 +74,10 @@ class SocialMediaBot:
             self._meta_login(page)
         elif platform == 'twitter':
             self._twitter_login(page)
-        else:
+        elif platform == 'tiktok':
             self._tiktok_login(page)
+        else:
+            self._soundcloud_login(page)
             
         cookies = page.context.cookies()
         with open(cache_file, 'w') as f:
@@ -80,9 +88,11 @@ class SocialMediaBot:
             page.get_by_role("button", name="Allow all cookies").click()
         except:
             pass
+            
         page.fill("input[name='username']", self.username)
         page.fill("input[name='password']", self.password)
         page.click("button[type='submit']")
+        
         self._handle_2fa(page)
         self._handle_dialogs(page)
 
@@ -91,6 +101,7 @@ class SocialMediaBot:
         page.click("span:has-text('Next')")
         page.fill("input[name='password']", self.password)
         page.click("div[data-testid='LoginForm_Login_Button']")
+        
         self._handle_2fa(page)
 
     def _tiktok_login(self, page):
@@ -99,6 +110,20 @@ class SocialMediaBot:
         page.fill("input[name='username']", self.username)
         page.fill("input[type='password']", self.password)
         page.click("button[type='submit']")
+        
+        self._handle_2fa(page)
+
+    def _soundcloud_login(self, page):
+        try:
+            page.click("button:has-text('Accept cookies')")
+        except:
+            pass
+            
+        page.click("button:has-text('Continue with email')")
+        page.fill("input[name='email']", self.username)
+        page.fill("input[name='password']", self.password)
+        page.click("button[type='submit']")
+        
         self._handle_2fa(page)
 
     def _handle_2fa(self, page):
@@ -118,11 +143,14 @@ class SocialMediaBot:
                 continue
 
     def find_followers(self, page, platform):
+        print(f"Finding followers for {self.target} on {platform}")
+        
         urls = {
             'instagram': f"https://www.instagram.com/{self.target}/",
             'threads': f"https://www.threads.net/{self.target}/",
             'twitter': f"https://twitter.com/{self.target}/followers",
-            'tiktok': f"https://www.tiktok.com/@{self.target}/followers"
+            'tiktok': f"https://www.tiktok.com/@{self.target}/followers",
+            'soundcloud': f"https://soundcloud.com/{self.target}/followers"
         }
         
         page.goto(urls[platform])
@@ -132,7 +160,8 @@ class SocialMediaBot:
             'instagram': [f"a:has-text('followers')", f"a[href='/{self.target}/followers/']"],
             'threads': [f"a:has-text('followers')", f"a[href='/{self.target}/followers/']"],
             'twitter': ["[data-testid='followers']"],
-            'tiktok': ["span:has-text('Followers')"]
+            'tiktok': ["span:has-text('Followers')"],
+            'soundcloud': ["a:has-text('Followers')", ".infoStats__followersCount"]
         }
         
         for selector in selectors.get(platform, []):
@@ -156,7 +185,16 @@ class SocialMediaBot:
             'instagram': "button:has-text('Follow')",
             'threads': "button:has-text('Follow')",
             'twitter': "[data-testid='follow']",
-            'tiktok': "button:has-text('Follow')"
+            'tiktok': "button:has-text('Follow')",
+            'soundcloud': "button.sc-button-follow"
+        }
+        
+        limit_messages = {
+            'instagram': ["Try Again Later", "Action Blocked", "Limit Reached"],
+            'threads': ["Try Again Later", "Action Blocked", "Limit Reached"],
+            'twitter': ["Rate limit exceeded", "You are unable to follow more"],
+            'tiktok': ["Follow limit reached", "Too many follows"],
+            'soundcloud': ["Follow limit reached", "Daily limit exceeded"]
         }
         
         buttons = page.locator(selectors[platform])
@@ -171,6 +209,13 @@ class SocialMediaBot:
                     if button.is_visible():
                         page.wait_for_timeout(random.uniform(500, 1500))
                         button.click()
+                        
+                        # Check for limit messages
+                        for message in limit_messages[platform]:
+                            if page.get_by_text(message, exact=False).is_visible():
+                                print(f"Follow limit detected on {platform}. Moving to next platform.")
+                                return
+                        
                         self.follow_counts[platform] += 1
                         print(f"Followed {self.follow_counts[platform]}/{self.max_follows[platform]}")
                         self._handle_dialogs(page)
@@ -178,5 +223,9 @@ class SocialMediaBot:
                 print(f"Error following user: {str(e)}")
 
 if __name__ == "__main__":
-    bot = SocialMediaBot()
-    bot.run()
+    try:
+        bot = SocialMediaBot()
+        bot.run()
+    except Exception as e:
+        print(f"Bot failed: {str(e)}")
+        sys.exit(1)
