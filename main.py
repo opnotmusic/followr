@@ -102,15 +102,15 @@ class SocialMediaBot:
         self._handle_dialogs(page)
 
     def _twitter_login(self, page):
-    for attempt in range(5):
-        try:
-            page.wait_for_selector("input[autocomplete='username']", timeout=60000)
-            page.fill("input[autocomplete='username']", self.username)
-            page.click("span:has-text('Next')")
-            break
-        except Exception as e:
-            print(f"Attempt {attempt + 1}: Waiting for Twitter username input failed: {str(e)}")
-            time.sleep(2)  # Wait before retrying
+        for attempt in range(5):
+            try:
+                page.wait_for_selector("input[autocomplete='username']", timeout=60000)
+                page.fill("input[autocomplete='username']", self.username)
+                page.click("span:has-text('Next')")
+                break
+            except Exception as e:
+                print(f"Attempt {attempt + 1}: Waiting for Twitter username input failed: {str(e)}")
+                time.sleep(2)  # Wait before retrying
 
     for attempt in range(5):
         try:
