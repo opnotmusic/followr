@@ -108,34 +108,34 @@ class SocialMediaBot:
             f.write(self.encrypt_cookies({'cookies': cookies}))
         logging.info(f"Google session cookies saved for {platform}.")
 
-    def _perform_google_login(self, page, platform):
-    try:
-        logging.info(f"Logging into {platform} using Google/Instagram...")
-        button_texts = {
-            'tiktok': "Continue with Google",
-            'threads': "Continue with Instagram",
-            'soundcloud': "Continue with Google",
-            'twitter': "Log in with Google",
-            'instagram': "Log in with Google",
-        }
-
-        button_text = button_texts.get(platform, "Log in with Google")
-        page.click(f"button:has-text('{button_text}')", timeout=15000)
-        page.wait_for_load_state("networkidle")
-
-        # Handle Google's or Instagram's login page
-        if platform in ['tiktok', 'soundcloud', 'twitter', 'instagram']:
-            page.fill("input[type='email']", self.google_email, timeout=15000)
-            page.click("button:has-text('Next')", timeout=15000)
-            page.wait_for_timeout(2000)  # Adjust as needed
-            page.fill("input[type='password']", self.google_password, timeout=15000)
-            page.click("button:has-text('Next')", timeout=15000)
-            self._wait_for_phone_confirmation(page)
-
-        logging.info(f"Successfully logged into {platform} via Google/Instagram.")
-    except Exception as e:
-        logging.error(f"Google/Instagram login failed for {platform}: {e}")
-        raise RuntimeError(f"Login error on {platform}: {e}")
+     def _perform_google_login(self, page, platform):
+        try:
+            logging.info(f"Logging into {platform} using Google/Instagram...")
+            button_texts = {
+                'tiktok': "Continue with Google",
+                'threads': "Continue with Instagram",
+                'soundcloud': "Continue with Google",
+                'twitter': "Log in with Google",
+                'instagram': "Log in with Google",
+            }
+    
+            button_text = button_texts.get(platform, "Log in with Google")
+            page.click(f"button:has-text('{button_text}')", timeout=15000)
+            page.wait_for_load_state("networkidle")
+    
+            # Handle Google's or Instagram's login page
+            if platform in ['tiktok', 'soundcloud', 'twitter', 'instagram']:
+                page.fill("input[type='email']", self.google_email, timeout=15000)
+                page.click("button:has-text('Next')", timeout=15000)
+                page.wait_for_timeout(2000)  # Adjust as needed
+                page.fill("input[type='password']", self.google_password, timeout=15000)
+                page.click("button:has-text('Next')", timeout=15000)
+                self._wait_for_phone_confirmation(page)
+    
+            logging.info(f"Successfully logged into {platform} via Google/Instagram.")
+        except Exception as e:
+            logging.error(f"Google/Instagram login failed for {platform}: {e}")
+            raise RuntimeError(f"Login error on {platform}: {e}")
 
     def _wait_for_phone_confirmation(self, page):
         try:
