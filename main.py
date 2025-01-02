@@ -141,6 +141,8 @@ class SocialMediaBot:
             if not xpath:
                 raise RuntimeError(f"No XPath defined for {platform}")
 
+            # Wait for the element to be visible before clicking
+            page.locator(f"xpath={xpath}").wait_for(state="visible", timeout=20000)
             page.locator(f"xpath={xpath}").click(timeout=15000)
             page.wait_for_load_state("networkidle")
 
