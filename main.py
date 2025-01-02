@@ -24,10 +24,12 @@ class SocialMediaBot:
     def __init__(self):
         self.username = os.getenv('INSTAGRAM_USERNAME')
         self.password = os.getenv('INSTAGRAM_PASSWORD')
+        self.google_email = os.getenv('GOOGLE_EMAIL')
+        self.google_password = os.getenv('GOOGLE_PASSWORD')
         self.target = os.getenv('TARGET_ACCOUNT', 'davidguetta')
 
-        if not self.username or not self.password:
-            raise ValueError("Missing credentials! Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD in the .env file.")
+        if not self.google_email or not self.google_password:
+            raise ValueError("Missing Google credentials! Set GOOGLE_EMAIL and GOOGLE_PASSWORD in secrets.")
 
         self.max_follows = {
             'instagram': 30,
@@ -43,30 +45,6 @@ class SocialMediaBot:
             'twitter': 'https://x.com/i/flow/login',
             'tiktok': 'https://www.tiktok.com/login',
             'soundcloud': 'https://soundcloud.com/signin'
-        }
-
-        self.selectors = {
-            'login': {
-                'instagram': "input[name='username']",
-                'threads': "input[name='username']",
-                'twitter': "input[name='email']",
-                'tiktok': "input[name='username']",
-                'soundcloud': "input[name='email']"
-            },
-            'password': {
-                'instagram': "input[name='password']",
-                'threads': "input[name='password']",
-                'twitter': "input[name='password']",
-                'tiktok': "input[type='password']",
-                'soundcloud': "input[name='password']"
-            },
-            'submit': {
-                'instagram': "button[type='submit']",
-                'threads': "button[type='submit']",
-                'twitter': "button:has-text('Log in')",
-                'tiktok': "button[type='submit']",
-                'soundcloud': "button[type='submit']"
-            }
         }
 
         self.follow_counts = {platform: 0 for platform in self.max_follows.keys()}
@@ -109,48 +87,59 @@ class SocialMediaBot:
         logging.info("Screenshot saved: %s", screenshot_path)
 
     def login(self, page, platform):
-        cache_file = f"{platform}_session_cache.json"
+        cache_file = f"{platform}_google_session_cache.json"
 
         if os.path.exists(cache_file):
             try:
                 with open(cache_file, 'r') as f:
-                    encrypted = f.read()
-                    cookies = self.decrypt_cookies(encrypted)
+                    cookies = self.decrypt_cookies(f.read())
                     page.context.add_cookies(cookies.get('cookies', []))
-                logging.info("Loaded session cookies for %s", platform)
+                logging.info(f"Loaded Google session cookies for {platform}.")
                 return
             except Exception as e:
-                logging.warning("Failed to load session cookies for %s: %s", platform, str(e))
+                logging.warning(f"Failed to load Google session cookies for {platform}: {e}")
 
-        page.goto(self.platform_urls[platform], timeout=15000)
-        page.wait_for_load_state("networkidle")
+        # Perform login using Google
+        self._perform_google_login(page, platform)
 
-        retry_attempts = 3
-        for attempt in range(retry_attempts):
-            try:
-                self._perform_login(page, platform)
-                cookies = page.context.cookies()
-                with open(cache_file, 'w') as f:
-                    encrypted = self.encrypt_cookies({'cookies': cookies})
-                    f.write(encrypted)
-                logging.info("Session cookies saved for %s", platform)
-                break
-            except Exception as e:
-                logging.error("Login attempt %d failed on %s: %s", attempt + 1, platform, str(e))
-                if attempt == retry_attempts - 1:
-                    raise
+        # Cache cookies after successful login
+        cookies = page.context.cookies()
+        with open(cache_file, 'w') as f:
+            f.write(self.encrypt_cookies({'cookies': cookies}))
+        logging.info(f"Google session cookies saved for {platform}.")
 
-    def _perform_login(self, page, platform):
-        page.fill(self.selectors['login'][platform], self.username, timeout=5000)
-        page.fill(self.selectors['password'][platform], self.password, timeout=5000)
-        page.click(self.selectors['submit'][platform], timeout=5000)
+    def _perform_google_login(self, page, platform):
+        try:
+            logging.info(f"Logging into {platform} using Google...")
+            page.click("button:has-text('Log in with Google')", timeout=15000)
+            page.wait_for_load_state("networkidle")
 
-        self._handle_2fa(page)
-        self._handle_dialogs(page)
+            # Handle Google's login page
+            page.fill("input[type='email']", self.google_email, timeout=15000)
+            page.click("button:has-text('Next')", timeout=15000)
+            page.wait_for_timeout(2000)  # Adjust as needed
+            page.fill("input[type='password']", self.google_password, timeout=15000)
+            page.click("button:has-text('Next')", timeout=15000)
+
+            # Wait for manual phone confirmation
+            self._wait_for_phone_confirmation(page)
+
+            logging.info(f"Successfully logged into {platform} via Google.")
+        except Exception as e:
+            logging.error(f"Google login failed for {platform}: {e}")
+            raise RuntimeError(f"Google login error on {platform}: {e}")
+
+    def _wait_for_phone_confirmation(self, page):
+        try:
+            logging.info("Waiting for phone confirmation...")
+            page.wait_for_load_state("networkidle", timeout=300000)  # Wait up to 5 minutes
+            logging.info("Phone confirmation successful.")
+        except Exception as e:
+            logging.error("Phone confirmation timed out or failed: %s", e)
+            raise RuntimeError("Phone confirmation required but not completed.")
 
     def find_followers(self, page, platform):
         logging.info("Finding followers for %s on %s", self.target, platform)
-
         target_urls = {
             'instagram': f"https://www.instagram.com/{self.target}/",
             'threads': f"https://www.threads.net/{self.target}/",
@@ -158,7 +147,6 @@ class SocialMediaBot:
             'tiktok': f"https://www.tiktok.com/@{self.target}/",
             'soundcloud': f"https://soundcloud.com/{self.target}/followers"
         }
-
         page.goto(target_urls[platform], timeout=15000)
         page.wait_for_load_state("networkidle")
         self._scroll_followers(page, platform)
@@ -177,41 +165,20 @@ class SocialMediaBot:
             'tiktok': "button:has-text('Follow')",
             'soundcloud': "button.sc-button-follow"
         }
-
         buttons = page.locator(selectors[platform])
-
         try:
             for i in range(min(buttons.count(), self.max_follows[platform])):
                 if self.follow_counts[platform] >= self.max_follows[platform]:
                     break
-
                 button = buttons.nth(i)
                 if button.is_visible():
                     self._close_overlays(page)
                     button.click(timeout=5000)
                     page.wait_for_timeout(random.uniform(500, 1500))
-
                     self.follow_counts[platform] += 1
                     logging.info("Followed %d/%d on %s", self.follow_counts[platform], self.max_follows[platform], platform)
         except Exception as e:
             logging.error("Error following users on %s: %s", platform, str(e))
-
-    def _handle_2fa(self, page):
-        if page.locator("input[name='verificationCode']").is_visible():
-            code = input("Enter 2FA code: ")
-            page.fill("input[name='verificationCode']", code, timeout=5000)
-            page.click("button[type='submit']", timeout=5000)
-
-    def _handle_dialogs(self, page):
-        for selector in ["button:has-text('Not Now')", "button:has-text('Skip')", 
-                         "button:has-text('Cancel')", "button:has-text('Close')"]:
-            try:
-                dialog = page.locator(selector)
-                if dialog.is_visible():
-                    dialog.click(timeout=5000)
-                    page.wait_for_timeout(1000)
-            except Exception as e:
-                logging.error("Failed to handle dialog: %s", str(e))
 
     def _close_overlays(self, page):
         overlay_selectors = ["div[role='dialog']", "div.modal", "div.overlay"]
