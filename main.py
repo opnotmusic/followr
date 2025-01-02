@@ -72,10 +72,9 @@ class SocialMediaBot:
         self.follow_counts = {platform: 0 for platform in self.max_follows.keys()}
 
     def run(self):
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-
-            def process_platform(platform):
+        def process_platform(platform):
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
                 context = browser.new_context(
                     viewport={'width': 1280, 'height': 800},
                     user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -92,11 +91,10 @@ class SocialMediaBot:
                 finally:
                     page.close()
                     context.close()
+                    browser.close()
 
-            with ThreadPoolExecutor() as executor:
-                executor.map(process_platform, self.max_follows.keys())
-
-            browser.close()
+        with ThreadPoolExecutor() as executor:
+            executor.map(process_platform, self.max_follows.keys())
 
     def encrypt_cookies(self, cookies):
         return fernet.encrypt(json.dumps(cookies).encode()).decode()
