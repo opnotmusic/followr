@@ -24,6 +24,7 @@ jobs:
         python -m playwright install --with-deps chromium
         python -m venv venv
         source venv/bin/activate
+        pip install --upgrade pip
         pip install python-dotenv
     
     - name: Run bot
