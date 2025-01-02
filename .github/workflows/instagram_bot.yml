@@ -39,6 +39,8 @@ jobs:
         INSTAGRAM_USERNAME: ${{ secrets.INSTAGRAM_USERNAME }}
         INSTAGRAM_PASSWORD: ${{ secrets.INSTAGRAM_PASSWORD }}
         TARGET_ACCOUNT: ${{ secrets.TARGET_ACCOUNT }}
+        GOOGLE_EMAIL: ${{ secrets.GOOGLE_EMAIL }}
+        GOOGLE_PASSWORD: ${{ secrets.GOOGLE_PASSWORD }}
       run: python main.py | tee bot_log.txt
 
     - name: Upload logs and screenshots
