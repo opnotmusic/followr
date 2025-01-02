@@ -1,10 +1,14 @@
 import os
 import json
 import sys
+import logging
 from playwright.sync_api import sync_playwright
 import time
 from datetime import datetime
 import random
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 class SocialMediaBot:
     def __init__(self):
@@ -42,7 +46,7 @@ class SocialMediaBot:
             )
             
             for platform in self.max_follows.keys():
-                print(f"\nProcessing {platform}...")
+                logging.info("Processing %s...", platform)
                 page = context.new_page()
                 
                 try:
@@ -50,7 +54,7 @@ class SocialMediaBot:
                     self.find_followers(page, platform)
                     self.follow_users(page, platform)
                 except Exception as e:
-                    print(f"Error on {platform}: {str(e)}")
+                    logging.error("Error on %s: %s", platform, str(e))
                     self.capture_screenshot(page, platform, "error")
                 finally:
                     page.close()
@@ -62,7 +66,7 @@ class SocialMediaBot:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         screenshot_path = f"{platform}_{error_type}_{timestamp}.png"
         page.screenshot(path=screenshot_path)
-        print(f"Screenshot saved: {screenshot_path}")
+        logging.info("Screenshot saved: %s", screenshot_path)
 
     def login(self, page, platform):
         cache_file = f"{platform}_session_cache.json"
@@ -106,23 +110,25 @@ class SocialMediaBot:
             try:
                 page.wait_for_selector("input[autocomplete='username'], input[name='email']", timeout=60000)
                 if page.query_selector("input[autocomplete='username']"):
-                    page.fill("input[autocomplete='username']", self.username)
+                    email_username = f"{self.username}@gmail.com"
+                    page.fill("input[autocomplete='username']", email_username)
                 else:
-                    page.fill("input[name='email']", self.username)
+                    email_username = f"{self.username}@gmail.com"
+                    page.fill("input[name='email']", email_username)
                 page.click("span:has-text('Next')")
                 break
             except Exception as e:
-                print(f"Attempt {attempt + 1}: Waiting for Twitter username/email input failed: {str(e)}")
+                logging.warning("Attempt %d: Waiting for Twitter username/email input failed: %s", attempt + 1, str(e))
                 time.sleep(2)
 
         for attempt in range(5):
-             try:
+            try:
                 page.wait_for_selector("input[name='password']", timeout=60000)
                 page.fill("input[name='password']", self.password)
                 page.click("div[data-testid='LoginForm_Login_Button']")
                 break
-             except Exception as e:
-                print(f"Attempt {attempt + 1}: Waiting for Twitter password input failed: {str(e)}")
+            except Exception as e:
+                logging.warning("Attempt %d: Waiting for Twitter password input failed: %s", attempt + 1, str(e))
                 time.sleep(2)
 
     def _tiktok_login(self, page):
@@ -132,12 +138,13 @@ class SocialMediaBot:
                 page.click("button:has-text('Use phone / email / username')")
                 page.wait_for_selector("a:has-text('Log in with email or username')", timeout=60000)
                 page.click("a:has-text('Log in with email or username')")
-                page.fill("input[name='username']", self.username)
+                email_username = f"{self.username}@gmail.com"
+                page.fill("input[name='username']", email_username)
                 page.fill("input[type='password']", self.password)
                 page.click("button[type='submit']")
                 break
             except Exception as e:
-                print(f"Attempt {attempt + 1}: Waiting for TikTok login button failed: {str(e)}")
+                logging.warning("Attempt %d: Waiting for TikTok login button failed: %s", attempt + 1, str(e))
                 time.sleep(2)
 
         self._handle_2fa(page)
@@ -149,7 +156,7 @@ class SocialMediaBot:
                 page.click("button:has-text('Accept cookies')")
                 break
             except Exception as e:
-                print(f"Attempt {attempt + 1}: Waiting for SoundCloud accept cookies button failed: {str(e)}")
+                logging.warning("Attempt %d: Waiting for SoundCloud accept cookies button failed: %s", attempt + 1, str(e))
                 time.sleep(2)
 
         for attempt in range(5):
@@ -158,7 +165,7 @@ class SocialMediaBot:
                 page.click("button:has-text('Continue with email')")
                 break
             except Exception as e:
-                print(f"Attempt {attempt + 1}: Waiting for SoundCloud continue with email button failed: {str(e)}")
+                logging.warning("Attempt %d: Waiting for SoundCloud continue with email button failed: %s", attempt + 1, str(e))
                 time.sleep(2)
 
         for attempt in range(5):
@@ -169,7 +176,7 @@ class SocialMediaBot:
                 page.click("button[type='submit']")
                 break
             except Exception as e:
-                print(f"Attempt {attempt + 1}: Waiting for SoundCloud email input failed: {str(e)}")
+                logging.warning("Attempt %d: Waiting for SoundCloud email input failed: %s", attempt + 1, str(e))
                 time.sleep(2)
 
     def _handle_2fa(self, page):
@@ -185,11 +192,11 @@ class SocialMediaBot:
                 if button := page.query_selector(selector):
                     button.click()
                     page.wait_for_timeout(1000)
-            except:
-                continue
+            except Exception as e:
+                logging.error("Failed to handle dialog: %s", str(e))
 
     def find_followers(self, page, platform):
-        print(f"Finding followers for {self.target} on {platform}")
+        logging.info("Finding followers for %s on %s", self.target, platform)
         
         urls = {
             'instagram': f"https://www.instagram.com/{self.target}/",
@@ -215,7 +222,7 @@ class SocialMediaBot:
                 page.click(selector)
                 break
             except Exception as e:
-                print(f"Error finding followers on {platform}: {str(e)}")
+                logging.error("Error finding followers on %s: %s", platform, str(e))
                 self.capture_screenshot(page, platform, "find_followers_error")
                 continue
                 
@@ -261,19 +268,19 @@ class SocialMediaBot:
                         # Check for limit messages
                         for message in limit_messages[platform]:
                             if page.get_by_text(message, exact=False).is_visible():
-                                print(f"Follow limit detected on {platform}. Moving to next platform.")
+                                logging.info("Follow limit detected on %s. Moving to next platform.", platform)
                                 return
                         
                         self.follow_counts[platform] += 1
-                        print(f"Followed {self.follow_counts[platform]}/{self.max_follows[platform]}")
+                        logging.info("Followed %d/%d on %s", self.follow_counts[platform], self.max_follows[platform], platform)
                         self._handle_dialogs(page)
             except Exception as e:
-                print(f"Error following user: {str(e)}")
+                logging.error("Error following user: %s", str(e))
 
 if __name__ == "__main__":
     try:
         bot = SocialMediaBot()
         bot.run()
     except Exception as e:
-        print(f"Bot failed: {str(e)}")
+        logging.error("Bot failed: %s", str(e))
         sys.exit(1)
