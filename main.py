@@ -20,11 +20,11 @@ class SocialMediaBot:
             raise ValueError("Missing credentials! Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD")
         
         self.max_follows = {
-            'instagram': 100,
-            'threads': 75,
-            'twitter': 300,
-            'tiktok': 150,
-            'soundcloud': 75
+            'instagram': 30,
+            'threads': 35,
+            'twitter': 30,
+            'tiktok': 30,
+            'soundcloud': 35
         }
         
         self.platform_urls = {
@@ -106,9 +106,9 @@ class SocialMediaBot:
         self._handle_dialogs(page)
 
     def _twitter_login(self, page):
-        for attempt in range(5):
+        for attempt in range(2):
             try:
-                page.wait_for_selector("input[autocomplete='username'], input[name='email']", timeout=6000)
+                page.wait_for_selector("input[autocomplete='username'], input[name='email']", timeout=3141)
                 if page.query_selector("input[autocomplete='username']"):
                     email_username = f"{self.username}@gmail.com"
                     page.fill("input[autocomplete='username']", email_username)
@@ -121,9 +121,9 @@ class SocialMediaBot:
                 logging.warning("Attempt %d: Waiting for Twitter username/email input failed: %s", attempt + 1, str(e))
                 time.sleep(2)
 
-        for attempt in range(5):
+        for attempt in range(2):
             try:
-                page.wait_for_selector("input[name='password']", timeout=6000)
+                page.wait_for_selector("input[name='password']", timeout=3141)
                 page.fill("input[name='password']", self.password)
                 page.click("div[data-testid='LoginForm_Login_Button']")
                 break
@@ -132,11 +132,11 @@ class SocialMediaBot:
                 time.sleep(2)
 
     def _tiktok_login(self, page):
-        for attempt in range(5):
+        for attempt in range(2):
             try:
-                page.wait_for_selector("button:has-text('Use phone / email / username')", timeout=6000)
+                page.wait_for_selector("button:has-text('Use phone / email / username')", timeout=3141)
                 page.click("button:has-text('Use phone / email / username')")
-                page.wait_for_selector("a:has-text('Log in with email or username')", timeout=6000)
+                page.wait_for_selector("a:has-text('Log in with email or username')", timeout=3141)
                 page.click("a:has-text('Log in with email or username')")
                 email_username = f"{self.username}@gmail.com"
                 page.fill("input[name='username']", email_username)
@@ -150,27 +150,27 @@ class SocialMediaBot:
         self._handle_2fa(page)
 
     def _soundcloud_login(self, page):
-        for attempt in range(5):
+        for attempt in range(2):
             try:
-                page.wait_for_selector("button:has-text('Accept cookies')", timeout=6000)
+                page.wait_for_selector("button:has-text('Accept cookies')", timeout=3141)
                 page.click("button:has-text('Accept cookies')")
                 break
             except Exception as e:
                 logging.warning("Attempt %d: Waiting for SoundCloud accept cookies button failed: %s", attempt + 1, str(e))
                 time.sleep(2)
 
-        for attempt in range(5):
+        for attempt in range(2):
             try:
-                page.wait_for_selector("button:has-text('Continue with email')", timeout=6000)
+                page.wait_for_selector("button:has-text('Continue with email')", timeout=3141)
                 page.click("button:has-text('Continue with email')")
                 break
             except Exception as e:
                 logging.warning("Attempt %d: Waiting for SoundCloud continue with email button failed: %s", attempt + 1, str(e))
                 time.sleep(2)
 
-        for attempt in range(5):
+        for attempt in range(2):
             try:
-                page.wait_for_selector("input[name='email']", timeout=6000)
+                page.wait_for_selector("input[name='email']", timeout=3141)
                 page.fill("input[name='email']", self.username)
                 page.fill("input[name='password']", self.password)
                 page.click("button[type='submit']")
@@ -196,27 +196,28 @@ class SocialMediaBot:
                 logging.error("Failed to handle dialog: %s", str(e))
 
     def find_followers(self, page, platform):
-        logging.info("Finding followers for %s on %s", self.target, platform)
-        
+        logging.info("Finding followers for %s on %s", self.target, platform)        
+
         urls = {
             'instagram': f"https://www.instagram.com/{self.target}/",
             'threads': f"https://www.threads.net/{self.target}/",
             'twitter': f"https://twitter.com/{self.target}/followers",
             'tiktok': f"https://www.tiktok.com/@{self.target}/followers",
             'soundcloud': f"https://soundcloud.com/{self.target}/followers"
-        }
-        
+        }        
+
         page.goto(urls[platform])
-        page.wait_for_load_state("networkidle")
-        
+        page.wait_for_load_state("networkidle")        
+
+        # Updated selectors to use class selectors
         selectors = {
-            'instagram': [f"a:has-text('followers')", f"a[href='/{self.target}/followers/']"],
-            'threads': [f"a:has-text('followers')", f"a[href='/{self.target}/followers/']"],
-            'twitter': ["[data-testid='followers']"],
-            'tiktok': ["span:has-text('Followers')"],
-            'soundcloud': ["a:has-text('Followers')", ".infoStats__followersCount"]
-        }
-        
+            'instagram': [".x1i10hfl", ".x1i10hfl"],  # Updated to use class selectors
+            'threads': [".x1i10hfl", ".x1i10hfl"],  # Updated to use class selectors 
+            'twitter': [".css-146c3p1"],  # Updated to use class selectors
+            'tiktok': [".css-1hig5p0-SpanUnit"],  # Updated to use class selectors
+            'soundcloud': [".infoStats__statLink"]  # Updated to use class selectors
+        }        
+
         for selector in selectors.get(platform, []):
             try:
                 page.click(selector)
@@ -224,9 +225,9 @@ class SocialMediaBot:
             except Exception as e:
                 logging.error("Error finding followers on %s: %s", platform, str(e))
                 self.capture_screenshot(page, platform, "find_followers_error")
-                continue
-                
-        page.wait_for_timeout(2000)
+                continue                
+
+        page.wait_for_timeout(3141)  # Updated wait time
         self._scroll_followers(page, platform)
 
     def _scroll_followers(self, page, platform):
