@@ -22,8 +22,6 @@ jobs:
         python -m pip install --upgrade pip setuptools wheel
         pip install playwright
         python -m playwright install --with-deps chromium
-        python -m venv venv
-        source venv/bin/activate
         pip install --upgrade pip
         pip install python-dotenv
     
