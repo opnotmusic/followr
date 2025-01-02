@@ -7,12 +7,18 @@ from playwright.sync_api import sync_playwright
 import time
 from datetime import datetime
 import random
+from cryptography.fernet import Fernet
+from concurrent.futures import ThreadPoolExecutor
 
 # Load environment variables
 load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Encryption key for session cookies (generate and store securely)
+ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", Fernet.generate_key().decode())
+fernet = Fernet(ENCRYPTION_KEY.encode())
 
 class SocialMediaBot:
     def __init__(self):
@@ -68,16 +74,15 @@ class SocialMediaBot:
     def run(self):
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
-                viewport={'width': 1280, 'height': 800},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            )
 
-            for platform in self.max_follows.keys():
-                logging.info("Processing %s...", platform)
+            def process_platform(platform):
+                context = browser.new_context(
+                    viewport={'width': 1280, 'height': 800},
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                )
                 page = context.new_page()
-
                 try:
+                    logging.info("Processing %s...", platform)
                     self.login(page, platform)
                     self.find_followers(page, platform)
                     self.follow_users(page, platform)
@@ -86,9 +91,18 @@ class SocialMediaBot:
                     self.capture_screenshot(page, platform, "error")
                 finally:
                     page.close()
+                    context.close()
 
-            context.close()
+            with ThreadPoolExecutor() as executor:
+                executor.map(process_platform, self.max_follows.keys())
+
             browser.close()
+
+    def encrypt_cookies(self, cookies):
+        return fernet.encrypt(json.dumps(cookies).encode()).decode()
+
+    def decrypt_cookies(self, encrypted):
+        return json.loads(fernet.decrypt(encrypted.encode()).decode())
 
     def capture_screenshot(self, page, platform, error_type):
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -102,36 +116,39 @@ class SocialMediaBot:
         if os.path.exists(cache_file):
             try:
                 with open(cache_file, 'r') as f:
-                    page.context.add_cookies(json.load(f).get('cookies', []))
+                    encrypted = f.read()
+                    cookies = self.decrypt_cookies(encrypted)
+                    page.context.add_cookies(cookies.get('cookies', []))
                 logging.info("Loaded session cookies for %s", platform)
                 return
             except Exception as e:
                 logging.warning("Failed to load session cookies for %s: %s", platform, str(e))
 
-        page.goto(self.platform_urls[platform], timeout=10000)
+        page.goto(self.platform_urls[platform], timeout=15000)
         page.wait_for_load_state("networkidle")
 
-        try:
-            self._perform_login(page, platform)
-        except Exception as e:
-            logging.error("Login failed on %s: %s", platform, str(e))
-            self.capture_screenshot(page, platform, "login_error")
-
-        cookies = page.context.cookies()
-        with open(cache_file, 'w') as f:
-            json.dump({'cookies': cookies}, f)
-        logging.info("Session cookies saved for %s", platform)
+        retry_attempts = 3
+        for attempt in range(retry_attempts):
+            try:
+                self._perform_login(page, platform)
+                cookies = page.context.cookies()
+                with open(cache_file, 'w') as f:
+                    encrypted = self.encrypt_cookies({'cookies': cookies})
+                    f.write(encrypted)
+                logging.info("Session cookies saved for %s", platform)
+                break
+            except Exception as e:
+                logging.error("Login attempt %d failed on %s: %s", attempt + 1, platform, str(e))
+                if attempt == retry_attempts - 1:
+                    raise
 
     def _perform_login(self, page, platform):
-        try:
-            page.fill(self.selectors['login'][platform], self.username, timeout=5000)
-            page.fill(self.selectors['password'][platform], self.password, timeout=5000)
-            page.click(self.selectors['submit'][platform], timeout=5000)
+        page.fill(self.selectors['login'][platform], self.username, timeout=5000)
+        page.fill(self.selectors['password'][platform], self.password, timeout=5000)
+        page.click(self.selectors['submit'][platform], timeout=5000)
 
-            self._handle_2fa(page)
-            self._handle_dialogs(page)
-        except KeyError:
-            raise ValueError(f"Login selectors not defined for {platform}")
+        self._handle_2fa(page)
+        self._handle_dialogs(page)
 
     def find_followers(self, page, platform):
         logging.info("Finding followers for %s on %s", self.target, platform)
@@ -144,9 +161,8 @@ class SocialMediaBot:
             'soundcloud': f"https://soundcloud.com/{self.target}/followers"
         }
 
-        page.goto(target_urls[platform], timeout=10000)
+        page.goto(target_urls[platform], timeout=15000)
         page.wait_for_load_state("networkidle")
-
         self._scroll_followers(page, platform)
 
     def _scroll_followers(self, page, platform):
