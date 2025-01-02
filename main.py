@@ -111,7 +111,7 @@ class SocialMediaBot:
         page.wait_for_load_state("networkidle")
 
         selectors = {
-            'instagram': ["a[href*='/followers']"],
+            'instagram': ["a[href='/followers/']"],
             'threads': ["a[href*='/followers']"],
             'twitter': ["a.css-146c3p1"],
             'tiktok': ["span.css-1hig5p0-SpanUnit"],
@@ -120,7 +120,11 @@ class SocialMediaBot:
 
         for selector in selectors.get(platform, []):
             try:
-                page.locator(selector).click(timeout=3000)
+                links = page.locator(selector)
+                if links.count() > 1:
+                    links.first.click(timeout=3000)  # Use the first matching link
+                else:
+                    links.click(timeout=3000)
                 break
             except Exception as e:
                 logging.error("Error finding followers on %s: %s", platform, str(e))
@@ -177,7 +181,7 @@ class SocialMediaBot:
 
     def _meta_login(self, page):
         try:
-            page.get_by_role("button", name="Allow all cookies").click(timeout=3000)
+            page.locator("button:has-text('Allow all cookies')").click(timeout=3000)
         except:
             pass
 
@@ -227,8 +231,9 @@ class SocialMediaBot:
         for selector in ["button:has-text('Not Now')", "button:has-text('Skip')", 
                          "button:has-text('Cancel')", "button:has-text('Close')"]:
             try:
-                if button := page.locator(selector):
-                    button.click(timeout=3000)
+                dialog = page.locator(selector)
+                if dialog.is_visible():
+                    dialog.click(timeout=3000)
                     page.wait_for_timeout(1000)
             except Exception as e:
                 logging.error("Failed to handle dialog: %s", str(e))
