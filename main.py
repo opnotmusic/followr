@@ -76,7 +76,7 @@ class SocialMediaBot:
                 page.context.add_cookies(json.load(f).get('cookies', []))
             return
 
-        page.goto(self.platform_urls[platform])
+        page.goto(self.platform_urls[platform], timeout=10000)
         page.wait_for_load_state("networkidle")
 
         try:
@@ -100,18 +100,18 @@ class SocialMediaBot:
         logging.info("Finding followers for %s on %s", self.target, platform)
 
         urls = {
-            'instagram': f"https://www.instagram.com/{self.target}/",
-            'threads': f"https://www.threads.net/{self.target}/",
-            'twitter': f"https://twitter.com/{self.target}/followers",
-            'tiktok': f"https://www.tiktok.com/@{self.target}/followers",
+            'instagram': f"https://www.instagram.com/{self.target}",
+            'threads': f"https://www.threads.net/{self.target}",
+            'twitter': f"https://x.com/{self.target}/followers",
+            'tiktok': f"https://www.tiktok.com/@{self.target}",
             'soundcloud': f"https://soundcloud.com/{self.target}/followers"
         }
 
-        page.goto(urls[platform])
+        page.goto(urls[platform], timeout=10000)
         page.wait_for_load_state("networkidle")
 
         selectors = {
-            'instagram': ["a[href='/followers/']"],
+            'instagram': ["a[href*='/followers']"],
             'threads': ["a[href*='/followers']"],
             'twitter': ["a.css-146c3p1"],
             'tiktok': ["span.css-1hig5p0-SpanUnit"],
@@ -121,10 +121,10 @@ class SocialMediaBot:
         for selector in selectors.get(platform, []):
             try:
                 links = page.locator(selector)
-                if links.count() > 1:
-                    links.first.click(timeout=3000)  # Use the first matching link
+                if links.count() > 0:
+                    links.first.click(timeout=5000)
                 else:
-                    links.click(timeout=3000)
+                    raise Exception("No matching elements found for selector.")
                 break
             except Exception as e:
                 logging.error("Error finding followers on %s: %s", platform, str(e))
@@ -166,7 +166,7 @@ class SocialMediaBot:
 
                 button = buttons.nth(i)
                 if button.is_visible():
-                    button.click(timeout=3000)
+                    button.click(timeout=5000)
                     page.wait_for_timeout(random.uniform(500, 1500))
 
                     for message in limit_messages[platform]:
@@ -181,51 +181,53 @@ class SocialMediaBot:
 
     def _meta_login(self, page):
         try:
-            page.locator("button:has-text('Allow all cookies')").click(timeout=3000)
+            if page.locator("button:has-text('Allow all cookies')").is_visible():
+                page.locator("button:has-text('Allow all cookies')").click(timeout=5000)
         except:
             pass
 
-        page.fill("input[name='username']", self.username, timeout=3000)
-        page.fill("input[name='password']", self.password, timeout=3000)
-        page.click("button[type='submit']", timeout=3000)
+        page.fill("input[name='username']", self.username, timeout=5000)
+        page.fill("input[name='password']", self.password, timeout=5000)
+        page.click("button[type='submit']", timeout=5000)
 
         self._handle_2fa(page)
         self._handle_dialogs(page)
 
     def _twitter_login(self, page):
         try:
-            page.fill("input[name='email']", self.username, timeout=3000)
-            page.click("button:has-text('Next')", timeout=3000)
-            page.fill("input[name='password']", self.password, timeout=3000)
-            page.click("button:has-text('Log in')", timeout=3000)
+            page.fill("input[name='email']", self.username, timeout=5000)
+            page.click("button:has-text('Next')", timeout=5000)
+            page.fill("input[name='password']", self.password, timeout=5000)
+            page.click("button:has-text('Log in')", timeout=5000)
         except Exception as e:
             logging.error("Twitter login failed: %s", str(e))
 
     def _tiktok_login(self, page):
         try:
-            page.click("button:has-text('Use phone / email / username')", timeout=3000)
-            page.click("a:has-text('Log in with email or username')", timeout=3000)
-            page.fill("input[name='username']", self.username, timeout=3000)
-            page.fill("input[type='password']", self.password, timeout=3000)
-            page.click("button[type='submit']", timeout=3000)
+            page.click("button:has-text('Use phone / email / username')", timeout=5000)
+            page.click("a:has-text('Log in with email or username')", timeout=5000)
+            page.fill("input[name='username']", self.username, timeout=5000)
+            page.fill("input[type='password']", self.password, timeout=5000)
+            page.click("button[type='submit']", timeout=5000)
         except Exception as e:
             logging.error("TikTok login failed: %s", str(e))
 
     def _soundcloud_login(self, page):
         try:
-            page.click("button:has-text('Accept cookies')", timeout=3000)
-            page.click("button:has-text('Continue with email')", timeout=3000)
-            page.fill("input[name='email']", self.username, timeout=3000)
-            page.fill("input[name='password']", self.password, timeout=3000)
-            page.click("button[type='submit']", timeout=3000)
+            if page.locator("button:has-text('Accept cookies')").is_visible():
+                page.click("button:has-text('Accept cookies')", timeout=5000)
+            page.click("button:has-text('Continue with email')", timeout=5000)
+            page.fill("input[name='email']", self.username, timeout=5000)
+            page.fill("input[name='password']", self.password, timeout=5000)
+            page.click("button[type='submit']", timeout=5000)
         except Exception as e:
             logging.error("SoundCloud login failed: %s", str(e))
 
     def _handle_2fa(self, page):
         if page.locator("input[name='verificationCode']").is_visible():
             code = input("Enter 2FA code: ")
-            page.fill("input[name='verificationCode']", code, timeout=3000)
-            page.click("button[type='submit']", timeout=3000)
+            page.fill("input[name='verificationCode']", code, timeout=5000)
+            page.click("button[type='submit']", timeout=5000)
 
     def _handle_dialogs(self, page):
         for selector in ["button:has-text('Not Now')", "button:has-text('Skip')", 
@@ -233,7 +235,7 @@ class SocialMediaBot:
             try:
                 dialog = page.locator(selector)
                 if dialog.is_visible():
-                    dialog.click(timeout=3000)
+                    dialog.click(timeout=5000)
                     page.wait_for_timeout(1000)
             except Exception as e:
                 logging.error("Failed to handle dialog: %s", str(e))
