@@ -108,7 +108,7 @@ class SocialMediaBot:
     def _twitter_login(self, page):
         for attempt in range(5):
             try:
-                page.wait_for_selector("input[autocomplete='username'], input[name='email']", timeout=60000)
+                page.wait_for_selector("input[autocomplete='username'], input[name='email']", timeout=6000)
                 if page.query_selector("input[autocomplete='username']"):
                     email_username = f"{self.username}@gmail.com"
                     page.fill("input[autocomplete='username']", email_username)
@@ -123,7 +123,7 @@ class SocialMediaBot:
 
         for attempt in range(5):
             try:
-                page.wait_for_selector("input[name='password']", timeout=60000)
+                page.wait_for_selector("input[name='password']", timeout=6000)
                 page.fill("input[name='password']", self.password)
                 page.click("div[data-testid='LoginForm_Login_Button']")
                 break
@@ -134,9 +134,9 @@ class SocialMediaBot:
     def _tiktok_login(self, page):
         for attempt in range(5):
             try:
-                page.wait_for_selector("button:has-text('Use phone / email / username')", timeout=60000)
+                page.wait_for_selector("button:has-text('Use phone / email / username')", timeout=6000)
                 page.click("button:has-text('Use phone / email / username')")
-                page.wait_for_selector("a:has-text('Log in with email or username')", timeout=60000)
+                page.wait_for_selector("a:has-text('Log in with email or username')", timeout=6000)
                 page.click("a:has-text('Log in with email or username')")
                 email_username = f"{self.username}@gmail.com"
                 page.fill("input[name='username']", email_username)
@@ -152,7 +152,7 @@ class SocialMediaBot:
     def _soundcloud_login(self, page):
         for attempt in range(5):
             try:
-                page.wait_for_selector("button:has-text('Accept cookies')", timeout=60000)
+                page.wait_for_selector("button:has-text('Accept cookies')", timeout=6000)
                 page.click("button:has-text('Accept cookies')")
                 break
             except Exception as e:
@@ -161,7 +161,7 @@ class SocialMediaBot:
 
         for attempt in range(5):
             try:
-                page.wait_for_selector("button:has-text('Continue with email')", timeout=60000)
+                page.wait_for_selector("button:has-text('Continue with email')", timeout=6000)
                 page.click("button:has-text('Continue with email')")
                 break
             except Exception as e:
@@ -170,7 +170,7 @@ class SocialMediaBot:
 
         for attempt in range(5):
             try:
-                page.wait_for_selector("input[name='email']", timeout=60000)
+                page.wait_for_selector("input[name='email']", timeout=6000)
                 page.fill("input[name='email']", self.username)
                 page.fill("input[name='password']", self.password)
                 page.click("button[type='submit']")
