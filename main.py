@@ -87,44 +87,65 @@ class SocialMediaBot:
         logging.info("Screenshot saved: %s", screenshot_path)
 
     def login(self, page, platform):
-        cache_file = f"{platform}_google_session_cache.json"
+        cache_file = f"{platform}_session_cache.json"
+
+        # Use Instagram session for Threads
+        if platform == "threads":
+            platform = "instagram"
+            cache_file = f"{platform}_session_cache.json"
 
         if os.path.exists(cache_file):
             try:
                 with open(cache_file, 'r') as f:
                     cookies = self.decrypt_cookies(f.read())
                     page.context.add_cookies(cookies.get('cookies', []))
-                logging.info(f"Loaded Google session cookies for {platform}.")
+                logging.info(f"Loaded session cookies for {platform}.")
                 return
             except Exception as e:
-                logging.warning(f"Failed to load Google session cookies for {platform}: {e}")
+                logging.warning(f"Failed to load session cookies for {platform}: {e}")
 
-        # Perform login using Google
-        self._perform_google_login(page, platform)
+        if platform == "instagram":
+            self._perform_instagram_login(page)
+        else:
+            self._perform_google_login(page, platform)
 
         # Cache cookies after successful login
         cookies = page.context.cookies()
         with open(cache_file, 'w') as f:
             f.write(self.encrypt_cookies({'cookies': cookies}))
-        logging.info(f"Google session cookies saved for {platform}.")
+        logging.info(f"Session cookies saved for {platform}.")
+
+    def _perform_instagram_login(self, page):
+        try:
+            logging.info("Logging into Instagram...")
+            page.goto(self.platform_urls['instagram'], timeout=15000)
+            page.fill("input[name='username']", self.username, timeout=15000)
+            page.fill("input[name='password']", self.password, timeout=15000)
+            page.click("button[type='submit']", timeout=15000)
+            page.wait_for_load_state("networkidle")
+            logging.info("Successfully logged into Instagram.")
+        except Exception as e:
+            logging.error(f"Instagram login failed: {e}")
+            raise RuntimeError("Instagram login failed.")
 
     def _perform_google_login(self, page, platform):
         try:
             logging.info(f"Logging into {platform} using Google/Instagram...")
-            button_texts = {
-                'tiktok': "Continue with Google",
-                'threads': "Continue with Instagram",
-                'soundcloud': "Continue with Google",
-                'twitter': "Log in with Google",
-                'instagram': "Log in with Google",
+            button_xpaths = {
+                'tiktok': "/html/body/div[1]/div/div[2]/div/div/div/div[5]/div[2]/div[2]/div/div",
+                'soundcloud': "/html/body/div/div/div/div/div/div/div/div[1]/div[2]/button",
+                'twitter': "//*[@id='gsi_41664_755539-overlay']",
+                'threads': "/html/body/div[2]/div/div/div[3]/div/div/div/div[2]/div[1]/div[3]/form/div/div[2]/div[2]/div[1]/span"
             }
+            xpath = button_xpaths.get(platform)
+            if not xpath:
+                raise RuntimeError(f"No XPath defined for {platform}")
 
-            button_text = button_texts.get(platform, "Log in with Google")
-            page.click(f"button:has-text('{button_text}')", timeout=15000)
+            page.locator(f"xpath={xpath}").click(timeout=15000)
             page.wait_for_load_state("networkidle")
 
-            # Handle Google's or Instagram's login page
-            if platform in ['tiktok', 'soundcloud', 'twitter', 'instagram']:
+            # Handle Google's login page if applicable
+            if platform in ['tiktok', 'soundcloud', 'twitter']:
                 page.fill("input[type='email']", self.google_email, timeout=15000)
                 page.click("button:has-text('Next')", timeout=15000)
                 page.wait_for_timeout(2000)  # Adjust as needed
