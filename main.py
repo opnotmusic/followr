@@ -2,22 +2,26 @@ import os
 import json
 import sys
 import logging
+from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 import time
 from datetime import datetime
 import random
 
+# Load environment variables
+load_dotenv()
+
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class SocialMediaBot:
     def __init__(self):
-        self.username = os.environ.get('INSTAGRAM_USERNAME')
-        self.password = os.environ.get('INSTAGRAM_PASSWORD')
-        self.target = os.environ.get('TARGET_ACCOUNT', 'davidguetta')
+        self.username = os.getenv('INSTAGRAM_USERNAME')
+        self.password = os.getenv('INSTAGRAM_PASSWORD')
+        self.target = os.getenv('TARGET_ACCOUNT', 'davidguetta')
 
         if not self.username or not self.password:
-            raise ValueError("Missing credentials! Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD")
+            raise ValueError("Missing credentials! Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD in the .env file.")
 
         self.max_follows = {
             'instagram': 30,
@@ -30,9 +34,33 @@ class SocialMediaBot:
         self.platform_urls = {
             'instagram': 'https://www.instagram.com/accounts/login/',
             'threads': 'https://www.threads.net/login',
-            'twitter': 'https://twitter.com/i/flow/login',
+            'twitter': 'https://x.com/i/flow/login',
             'tiktok': 'https://www.tiktok.com/login',
             'soundcloud': 'https://soundcloud.com/signin'
+        }
+
+        self.selectors = {
+            'login': {
+                'instagram': "input[name='username']",
+                'threads': "input[name='username']",
+                'twitter': "input[name='email']",
+                'tiktok': "input[name='username']",
+                'soundcloud': "input[name='email']"
+            },
+            'password': {
+                'instagram': "input[name='password']",
+                'threads': "input[name='password']",
+                'twitter': "input[name='password']",
+                'tiktok': "input[type='password']",
+                'soundcloud': "input[name='password']"
+            },
+            'submit': {
+                'instagram': "button[type='submit']",
+                'threads': "button[type='submit']",
+                'twitter': "button:has-text('Log in')",
+                'tiktok': "button[type='submit']",
+                'soundcloud': "button[type='submit']"
+            }
         }
 
         self.follow_counts = {platform: 0 for platform in self.max_follows.keys()}
@@ -72,22 +100,19 @@ class SocialMediaBot:
         cache_file = f"{platform}_session_cache.json"
 
         if os.path.exists(cache_file):
-            with open(cache_file, 'r') as f:
-                page.context.add_cookies(json.load(f).get('cookies', []))
-            return
+            try:
+                with open(cache_file, 'r') as f:
+                    page.context.add_cookies(json.load(f).get('cookies', []))
+                logging.info("Loaded session cookies for %s", platform)
+                return
+            except Exception as e:
+                logging.warning("Failed to load session cookies for %s: %s", platform, str(e))
 
         page.goto(self.platform_urls[platform], timeout=10000)
         page.wait_for_load_state("networkidle")
 
         try:
-            if platform in ['instagram', 'threads']:
-                self._meta_login(page)
-            elif platform == 'twitter':
-                self._twitter_login(page)
-            elif platform == 'tiktok':
-                self._tiktok_login(page)
-            else:
-                self._soundcloud_login(page)
+            self._perform_login(page, platform)
         except Exception as e:
             logging.error("Login failed on %s: %s", platform, str(e))
             self.capture_screenshot(page, platform, "login_error")
@@ -95,49 +120,39 @@ class SocialMediaBot:
         cookies = page.context.cookies()
         with open(cache_file, 'w') as f:
             json.dump({'cookies': cookies}, f)
+        logging.info("Session cookies saved for %s", platform)
+
+    def _perform_login(self, page, platform):
+        try:
+            page.fill(self.selectors['login'][platform], self.username, timeout=5000)
+            page.fill(self.selectors['password'][platform], self.password, timeout=5000)
+            page.click(self.selectors['submit'][platform], timeout=5000)
+
+            self._handle_2fa(page)
+            self._handle_dialogs(page)
+        except KeyError:
+            raise ValueError(f"Login selectors not defined for {platform}")
 
     def find_followers(self, page, platform):
         logging.info("Finding followers for %s on %s", self.target, platform)
 
-        urls = {
-            'instagram': f"https://www.instagram.com/{self.target}",
-            'threads': f"https://www.threads.net/{self.target}",
+        target_urls = {
+            'instagram': f"https://www.instagram.com/{self.target}/",
+            'threads': f"https://www.threads.net/{self.target}/",
             'twitter': f"https://x.com/{self.target}/followers",
-            'tiktok': f"https://www.tiktok.com/@{self.target}",
+            'tiktok': f"https://www.tiktok.com/@{self.target}/",
             'soundcloud': f"https://soundcloud.com/{self.target}/followers"
         }
 
-        page.goto(urls[platform], timeout=10000)
+        page.goto(target_urls[platform], timeout=10000)
         page.wait_for_load_state("networkidle")
 
-        selectors = {
-            'instagram': ["a[href*='/followers']"],
-            'threads': ["a[href*='/followers']"],
-            'twitter': ["a.css-146c3p1"],
-            'tiktok': ["span.css-1hig5p0-SpanUnit"],
-            'soundcloud': ["a.infoStats__statLink"]
-        }
-
-        for selector in selectors.get(platform, []):
-            try:
-                links = page.locator(selector)
-                if links.count() > 0:
-                    links.first.click(timeout=5000)
-                else:
-                    raise Exception("No matching elements found for selector.")
-                break
-            except Exception as e:
-                logging.error("Error finding followers on %s: %s", platform, str(e))
-                self.capture_screenshot(page, platform, "find_followers_error")
-                continue
-
-        page.wait_for_timeout(3000)
         self._scroll_followers(page, platform)
 
     def _scroll_followers(self, page, platform):
         scroll_count = min(10, (self.max_follows[platform] // 12) + 2)
         for _ in range(scroll_count):
-            page.keyboard.press('PageDown')
+            page.evaluate("window.scrollBy(0, window.innerHeight)")
             page.wait_for_timeout(random.uniform(500, 1000))
 
     def follow_users(self, page, platform):
@@ -149,14 +164,6 @@ class SocialMediaBot:
             'soundcloud': "button.sc-button-follow"
         }
 
-        limit_messages = {
-            'instagram': ["Try Again Later", "Action Blocked", "Limit Reached"],
-            'threads': ["Try Again Later", "Action Blocked", "Limit Reached"],
-            'twitter': ["Rate limit exceeded", "You are unable to follow more"],
-            'tiktok': ["Follow limit reached", "Too many follows"],
-            'soundcloud': ["Follow limit reached", "Daily limit exceeded"]
-        }
-
         buttons = page.locator(selectors[platform])
 
         try:
@@ -166,62 +173,14 @@ class SocialMediaBot:
 
                 button = buttons.nth(i)
                 if button.is_visible():
+                    self._close_overlays(page)
                     button.click(timeout=5000)
                     page.wait_for_timeout(random.uniform(500, 1500))
-
-                    for message in limit_messages[platform]:
-                        if page.locator(f'text={message}').is_visible():
-                            logging.info("Follow limit detected on %s. Moving to next platform.", platform)
-                            return
 
                     self.follow_counts[platform] += 1
                     logging.info("Followed %d/%d on %s", self.follow_counts[platform], self.max_follows[platform], platform)
         except Exception as e:
             logging.error("Error following users on %s: %s", platform, str(e))
-
-    def _meta_login(self, page):
-        try:
-            if page.locator("button:has-text('Allow all cookies')").is_visible():
-                page.locator("button:has-text('Allow all cookies')").click(timeout=5000)
-        except:
-            pass
-
-        page.fill("input[name='username']", self.username, timeout=5000)
-        page.fill("input[name='password']", self.password, timeout=5000)
-        page.click("button[type='submit']", timeout=5000)
-
-        self._handle_2fa(page)
-        self._handle_dialogs(page)
-
-    def _twitter_login(self, page):
-        try:
-            page.fill("input[name='email']", self.username, timeout=5000)
-            page.click("button:has-text('Next')", timeout=5000)
-            page.fill("input[name='password']", self.password, timeout=5000)
-            page.click("button:has-text('Log in')", timeout=5000)
-        except Exception as e:
-            logging.error("Twitter login failed: %s", str(e))
-
-    def _tiktok_login(self, page):
-        try:
-            page.click("button:has-text('Use phone / email / username')", timeout=5000)
-            page.click("a:has-text('Log in with email or username')", timeout=5000)
-            page.fill("input[name='username']", self.username, timeout=5000)
-            page.fill("input[type='password']", self.password, timeout=5000)
-            page.click("button[type='submit']", timeout=5000)
-        except Exception as e:
-            logging.error("TikTok login failed: %s", str(e))
-
-    def _soundcloud_login(self, page):
-        try:
-            if page.locator("button:has-text('Accept cookies')").is_visible():
-                page.click("button:has-text('Accept cookies')", timeout=5000)
-            page.click("button:has-text('Continue with email')", timeout=5000)
-            page.fill("input[name='email']", self.username, timeout=5000)
-            page.fill("input[name='password']", self.password, timeout=5000)
-            page.click("button[type='submit']", timeout=5000)
-        except Exception as e:
-            logging.error("SoundCloud login failed: %s", str(e))
 
     def _handle_2fa(self, page):
         if page.locator("input[name='verificationCode']").is_visible():
@@ -239,6 +198,18 @@ class SocialMediaBot:
                     page.wait_for_timeout(1000)
             except Exception as e:
                 logging.error("Failed to handle dialog: %s", str(e))
+
+    def _close_overlays(self, page):
+        overlay_selectors = ["div[role='dialog']", "div.modal", "div.overlay"]
+        for selector in overlay_selectors:
+            try:
+                overlay = page.locator(selector)
+                if overlay.is_visible():
+                    logging.info("Closing overlay: %s", selector)
+                    overlay.locator("button:has-text('Close')").click(timeout=3000)
+                    page.wait_for_timeout(1000)
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     try:
