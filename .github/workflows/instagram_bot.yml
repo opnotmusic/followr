@@ -22,6 +22,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install playwright
         python -m playwright install --with-deps chromium
+        pip install dotenv
     
     - name: Run bot
       env:
