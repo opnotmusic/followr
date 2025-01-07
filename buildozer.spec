@@ -1,24 +1,16 @@
 [app]
-title = floww
-package.name = floww
-package.domain = aking
+title = Social Media Bot
+package.name = social_media_bot
+package.domain = org.example
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
-version = 1.0
-requirements = python3,kivy,cryptography,sqlite3,python-telegram-bot,cython
-icon.filename = icons/icon.png
+version = 0.1
+requirements = python3,kivy,python-dotenv,cryptography,sqlite3,requests,telegram,matplotlib
 orientation = portrait
-
-# Permissions
-android.permissions = INTERNET, WRITE_EXTERNAL_STORAGE
-
-# Build Options
-android.archs = armeabi-v7a, arm64-v8a
-android.api = 31
-android.minapi = 21
-android.ndk = 21b
-android.sdk = 20
 fullscreen = 0
+android.permissions = INTERNET
+presplash.filename = presplash.png
+icon.filename = icon.png
 
 [buildozer]
 log_level = 2
