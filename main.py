@@ -5,7 +5,6 @@ import logging
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 from cryptography.fernet import Fernet
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import random
 
@@ -28,7 +27,7 @@ class SocialMediaBot:
         if not self.username or not self.password:
             raise ValueError("Missing Instagram credentials! Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD in secrets.")
 
-        # Max limits reduced by 15% to avoid detection
+        # Interaction limits
         self.max_follows = int(30 * 0.85)  # 30 is Instagram's general limit
         self.max_likes = int(20 * 0.85)  # Adjusted for likes
         self.max_comments = int(10 * 0.85)  # Adjusted for comments
@@ -43,6 +42,20 @@ class SocialMediaBot:
             "Totally agree! 🙌",
             "Brilliant work! 💡",
         ]
+
+        # Log file to track interactions
+        self.interaction_log_path = "interaction_log.json"
+        self.interaction_log = self._load_interaction_log()
+
+    def _load_interaction_log(self):
+        if os.path.exists(self.interaction_log_path):
+            with open(self.interaction_log_path, "r") as f:
+                return json.load(f)
+        return {"liked_posts": [], "commented_posts": [], "followed_users": []}
+
+    def _save_interaction_log(self):
+        with open(self.interaction_log_path, "w") as f:
+            json.dump(self.interaction_log, f)
 
     def run(self):
         with sync_playwright() as p:
@@ -60,6 +73,7 @@ class SocialMediaBot:
             except Exception as e:
                 logging.error("Error: %s", str(e))
             finally:
+                self._save_interaction_log()
                 browser.close()
 
     def login(self, page):
@@ -77,7 +91,7 @@ class SocialMediaBot:
         page.wait_for_load_state("networkidle")
         post_selectors = "article a"
 
-        # Open posts to interact
+        # Get post links
         post_links = page.locator(post_selectors).evaluate_all("links => links.map(link => link.href)")
         logging.info("Found %d posts to interact with.", len(post_links))
 
@@ -87,6 +101,11 @@ class SocialMediaBot:
         for link in post_links:
             if likes_count >= self.max_likes and comments_count >= self.max_comments:
                 break
+
+            # Skip already interacted posts
+            if link in self.interaction_log["liked_posts"] or link in self.interaction_log["commented_posts"]:
+                logging.info("Skipping already interacted post: %s", link)
+                continue
 
             page.goto(link)
             page.wait_for_load_state("networkidle")
@@ -98,7 +117,8 @@ class SocialMediaBot:
                     if like_button:
                         like_button.click()
                         likes_count += 1
-                        logging.info("Liked post %d/%d", likes_count, self.max_likes)
+                        self.interaction_log["liked_posts"].append(link)
+                        logging.info("Liked post %d/%d: %s", likes_count, self.max_likes, link)
                         page.wait_for_timeout(random.randint(500, 2000))
                 except Exception as e:
                     logging.warning("Failed to like post: %s", str(e))
@@ -110,6 +130,7 @@ class SocialMediaBot:
                     page.fill("textarea", comment)
                     page.click("button:has-text('Post')")
                     comments_count += 1
+                    self.interaction_log["commented_posts"].append(link)
                     logging.info("Commented on post %d/%d: %s", comments_count, self.max_comments, comment)
                     page.wait_for_timeout(random.randint(500, 2000))
                 except Exception as e:
@@ -138,10 +159,16 @@ class SocialMediaBot:
                 break
             try:
                 button = follow_buttons.nth(i)
+                username = button.evaluate("el => el.closest('div').querySelector('a').href")
+                if username in self.interaction_log["followed_users"]:
+                    logging.info("Already followed user: %s", username)
+                    continue
+
                 if button.is_visible():
                     button.click()
                     follows_count += 1
-                    logging.info("Followed %d/%d users.", follows_count, self.max_follows)
+                    self.interaction_log["followed_users"].append(username)
+                    logging.info("Followed %d/%d users: %s", follows_count, self.max_follows, username)
                     page.wait_for_timeout(random.randint(500, 1500))
             except Exception as e:
                 logging.warning("Failed to follow a user: %s", str(e))
