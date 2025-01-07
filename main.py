@@ -1,12 +1,10 @@
 import os
-import random
-import logging
-import locale
 import sqlite3
+import logging
+import datetime
 import requests
-from dotenv import load_dotenv
 from cryptography.fernet import Fernet
-from telegram import Bot
+from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
@@ -14,7 +12,6 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Securely store sensitive information using encryption
 class SecureStorage:
     def __init__(self):
         self.key = os.getenv("ENCRYPTION_KEY", Fernet.generate_key())
@@ -39,155 +36,153 @@ class SocialMediaBot:
         self.init_database()
         self.secure_storage = SecureStorage()
 
-        # Load Telegram bot credentials
-        initial_token = "7583008741:AAFlZm_nDZwt78XaxBZ71OBdwuzz354tfGM"
-        self.telegram_bot_token = self.secure_storage.encrypt(initial_token)
-        self.telegram_chat_id = self.secure_storage.encrypt(os.getenv("TELEGRAM_CHAT_ID"))
+        # Load Telegram credentials
+        self.telegram_bot_token = self.get_telegram_token()
+        self.telegram_chat_id = self.get_telegram_chat_id()
 
     def init_database(self):
+        """Initialize database tables."""
         cursor = self.db_connection.cursor()
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE,
-                activation_code TEXT NOT NULL,
+                is_super_user INTEGER DEFAULT 0,
                 promo_image_url TEXT,
-                behavior TEXT DEFAULT 'default'
+                last_service_date TEXT
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS services (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                service TEXT NOT NULL,
+                price REAL NOT NULL,
+                timestamp TEXT NOT NULL
             )
             """
         )
         self.db_connection.commit()
 
-    def receive_activation_code(self, username, activation_code):
-        """Process activation code and generate promotional image."""
+    def get_telegram_token(self):
+        """Retrieve the Telegram bot token from secure storage."""
+        # Example: Stored as environment variable
+        return os.getenv("TELEGRAM_BOT_TOKEN", None)
+
+    def get_telegram_chat_id(self):
+        """Retrieve the Telegram chat ID from secure storage."""
+        # Example: Stored as environment variable
+        return os.getenv("TELEGRAM_CHAT_ID", None)
+
+    def register_user(self, username):
+        """Register a new user."""
         cursor = self.db_connection.cursor()
-
-        # Check if user already exists
         cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-        existing_user = cursor.fetchone()
-        if existing_user:
-            logging.info(f"User {username} already activated.")
-            return existing_user[3]  # Return existing promo image URL
+        if cursor.fetchone():
+            logging.info(f"User {username} already exists.")
+            return "User already exists."
 
-        # Generate a promotional image
-        promo_image_url = self.generate_dalle_image(
-            f"A futuristic promotional poster featuring an alien theme for {username}'s activation. Modern and sleek design, emphasizing creativity and technology.",
-            save_as=f"{username}_promo.png"
-        )
-
-        # Store user details in the database
         cursor.execute(
-            "INSERT INTO users (username, activation_code, promo_image_url, behavior) VALUES (?, ?, ?, ?)",
-            (username, activation_code, promo_image_url, "default")
+            "INSERT INTO users (username) VALUES (?)",
+            (username,)
         )
         self.db_connection.commit()
-        logging.info(f"User {username} added with promo image URL: {promo_image_url}")
-        return promo_image_url
+        logging.info(f"User {username} registered successfully.")
+        return "User registered successfully."
 
-    def generate_dalle_image(self, prompt, image_size="1024x1024", save_as=None):
-        """Generate an image dynamically using OpenAI DALL·E API."""
-        try:
-            logging.info(f"Generating image with prompt: {prompt}")
-            # Placeholder for OpenAI API integration
-            response = requests.get(f"https://source.unsplash.com/random/800x600?{prompt.replace(' ', '+')}")
-            if response.status_code == 200:
-                image_url = response.url
-                logging.info(f"Generated image URL: {image_url}")
-
-                # Optionally save the image locally
-                if save_as:
-                    img_data = requests.get(image_url).content
-                    with open(save_as, "wb") as handler:
-                        handler.write(img_data)
-                    logging.info(f"Image saved as: {save_as}")
-
-                return image_url
-        except Exception as e:
-            logging.error(f"Error generating image: {e}")
-            return None
-
-    def render_user_interface(self, username):
-        """Render the user interface with the promotional content."""
+    def set_super_user(self, username, is_super_user):
+        """Promote or demote a user to super user."""
         cursor = self.db_connection.cursor()
-        cursor.execute("SELECT promo_image_url FROM users WHERE username = ?", (username,))
-        promo_image = cursor.fetchone()
+        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+        if not cursor.fetchone():
+            logging.error(f"User {username} not found.")
+            return f"User {username} not found."
 
-        if promo_image:
-            print(f"\n--- Welcome, {username}! ---")
-            print(f"Your promotional image: {promo_image[0]}")
-        else:
-            print(f"No promotional content found for {username}.")
+        cursor.execute(
+            "UPDATE users SET is_super_user = ? WHERE username = ?",
+            (1 if is_super_user else 0, username)
+        )
+        self.db_connection.commit()
+        logging.info(f"User {username} updated to super user: {is_super_user}.")
+        return f"User {username} updated successfully."
+
+    def add_service(self, username, service, price):
+        """Log a service acquisition and notify the admin."""
+        cursor = self.db_connection.cursor()
+        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+        if not cursor.fetchone():
+            logging.error(f"User {username} not found.")
+            return f"User {username} not found."
+
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(
+            """
+            INSERT INTO services (username, service, price, timestamp)
+            VALUES (?, ?, ?, ?)
+            """,
+            (username, service, price, timestamp)
+        )
+        self.db_connection.commit()
+        logging.info(f"Service {service} added for user {username} at {price}.")
+        self.send_admin_notification(username, service, price)
+        return f"Service {service} logged successfully."
+
+    def send_admin_notification(self, username, service, price):
+        """Send a notification to the admin when a service is acquired."""
+        if not self.telegram_bot_token or not self.telegram_chat_id:
+            logging.error("Telegram bot credentials are not set.")
+            return
+
+        message = (
+            f"🔔 New Service Acquired!\n"
+            f"👤 User: {username}\n"
+            f"💲 Price: ${price:.2f}\n"
+            f"📄 Service: {service}\n"
+        )
+        url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
+        payload = {"chat_id": self.telegram_chat_id, "text": message}
+
+        try:
+            response = requests.post(url, json=payload)
+            if response.status_code == 200:
+                logging.info("Admin notification sent successfully.")
+            else:
+                logging.error(f"Failed to send notification: {response.text}")
+        except Exception as e:
+            logging.error(f"Error sending Telegram notification: {e}")
 
     def admin_console(self):
-        """Admin interface for managing users and promotions."""
+        """Admin interface for managing users and services."""
         while True:
             print("\n--- Admin Console ---")
-            print("1. View Users")
-            print("2. Change User Behavior")
-            print("3. Exit")
+            print("1. Register User")
+            print("2. Set Super User")
+            print("3. Add Service")
+            print("4. Exit")
             choice = input("Enter your choice: ")
 
             if choice == "1":
-                self.view_users()
+                username = input("Enter username to register: ")
+                print(self.register_user(username))
             elif choice == "2":
-                username = input("Enter the username to modify: ")
-                self.change_user_behavior(username)
+                username = input("Enter username to update: ")
+                is_super_user = input("Set as super user? (yes/no): ").strip().lower() == "yes"
+                print(self.set_super_user(username, is_super_user))
             elif choice == "3":
+                username = input("Enter username: ")
+                service = input("Enter service name: ")
+                price = float(input("Enter service price: "))
+                print(self.add_service(username, service, price))
+            elif choice == "4":
                 print("Exiting admin console...")
                 break
             else:
                 print("Invalid choice. Please try again.")
 
-    def view_users(self):
-        """Display all registered users."""
-        cursor = self.db_connection.cursor()
-        cursor.execute("SELECT username, promo_image_url, behavior FROM users")
-        users = cursor.fetchall()
-        print("\n--- Registered Users ---")
-        for user in users:
-            print(f"Username: {user[0]}, Promo Image: {user[1]}, Behavior: {user[2]}")
-        print("-------------------------")
-
-    def change_user_behavior(self, username):
-        """Allow the admin to change a user's behavior."""
-        cursor = self.db_connection.cursor()
-        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-        user = cursor.fetchone()
-
-        if not user:
-            print(f"User {username} not found.")
-            return
-
-        print(f"Current behavior for {username}: {user[4]}")
-        print("Available behaviors:")
-        print("1. Default")
-        print("2. VIP")
-        print("3. High Engagement Mode")
-        print("4. Custom")
-        choice = input("Select the new behavior: ")
-
-        behaviors = {
-            "1": "default",
-            "2": "vip",
-            "3": "high_engagement",
-            "4": "custom"
-        }
-        new_behavior = behaviors.get(choice, "default")
-
-        cursor.execute(
-            "UPDATE users SET behavior = ? WHERE username = ?",
-            (new_behavior, username)
-        )
-        self.db_connection.commit()
-        print(f"Behavior for {username} updated to {new_behavior}.")
-
-
 if __name__ == "__main__":
     bot = SocialMediaBot()
-    username = input("Enter your username: ")
-    activation_code = input("Enter your activation code: ")
-    promo_image = bot.receive_activation_code(username, activation_code)
-    if promo_image:
-        bot.render_user_interface(username)
+    print("\n--- Social Media Bot ---")
     bot.admin_console()
