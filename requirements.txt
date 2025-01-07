@@ -1,5 +1,8 @@
-Flask==2.2.3
-cryptography==41.0.2
-python-dotenv==1.0.0
-requests==2.31.0
-PyInstaller==5.11.0
+kivy
+python-dotenv
+cryptography
+sqlite3
+requests
+matplotlib
+telegram
+
