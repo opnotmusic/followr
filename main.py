@@ -55,6 +55,9 @@ class SocialMediaBot:
         self.telegram_chat_id = self.secure_storage.encrypt(os.getenv("TELEGRAM_CHAT_ID"))
         self.wallet_address = self.secure_storage.encrypt(os.getenv("WALLET_ADDRESS"))
 
+        # Default admin-configurable logo
+        self.logo_path = "default_logo.png"
+
     def init_database(self):
         cursor = self.db_connection.cursor()
         cursor.execute(
@@ -123,6 +126,13 @@ class SocialMediaBot:
                 (membership_type, price)
             )
         self.db_connection.commit()
+
+    def update_logo(self, new_logo_path):
+        if os.path.exists(new_logo_path):
+            self.logo_path = new_logo_path
+            logging.info(f"Updated app logo to: {new_logo_path}")
+        else:
+            logging.error(f"Logo file not found: {new_logo_path}")
 
     def update_telegram_bot_token(self, new_token):
         self.telegram_bot_token = self.secure_storage.encrypt(new_token)
