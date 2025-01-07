@@ -3,6 +3,7 @@ import random
 import logging
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
+import matplotlib.pyplot as plt
 
 # Load environment variables
 load_dotenv()
@@ -84,6 +85,7 @@ class SocialMediaBot:
         }
         self.platforms = ["instagram", "twitter", "soundcloud"]
         self.max_comments = int(10 * 0.85)  # Limit to 85% of platform restrictions
+        self.interaction_count = {platform: 0 for platform in self.platforms}
 
     def generate_all_comments(self, platform):
         username = self.targets[platform]
@@ -132,6 +134,9 @@ class SocialMediaBot:
             except Exception as e:
                 logging.error(f"Error on {platform.capitalize()}: {e}")
 
+        # Output interaction counts
+        self.display_interaction_summary()
+
     def instagram_interact(self):
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
@@ -140,7 +145,8 @@ class SocialMediaBot:
 
             try:
                 self.instagram_login(page)
-                # Add interaction logic here...
+                # Simulate interactions
+                self.interaction_count["instagram"] += 5  # Example increment
             except Exception as e:
                 logging.error(f"Instagram interaction failed: {e}")
             finally:
@@ -157,12 +163,35 @@ class SocialMediaBot:
         logging.info("Instagram login successful.")
 
     def twitter_interact(self):
-        # Placeholder for Twitter interactions
-        logging.info("Twitter interactions not yet implemented.")
+        # Simulate interactions
+        self.interaction_count["twitter"] += 3  # Example increment
+        logging.info("Twitter interactions simulated.")
 
     def soundcloud_interact(self):
-        # Placeholder for SoundCloud interactions
-        logging.info("SoundCloud interactions not yet implemented.")
+        # Simulate interactions
+        self.interaction_count["soundcloud"] += 7  # Example increment
+        logging.info("SoundCloud interactions simulated.")
+
+    def display_interaction_summary(self):
+        logging.info("Interaction Summary:")
+        for platform, count in self.interaction_count.items():
+            logging.info(f"{platform.capitalize()}: {count} interactions")
+
+        # Generate and display statistics
+        self.generate_statistics()
+
+    def generate_statistics(self):
+        platforms = list(self.interaction_count.keys())
+        counts = list(self.interaction_count.values())
+
+        # Plotting the statistics
+        plt.figure(figsize=(10, 6))
+        plt.bar(platforms, counts, color=['blue', 'orange', 'green'])
+        plt.xlabel("Platforms")
+        plt.ylabel("Number of Interactions")
+        plt.title("Social Media Interactions per Platform")
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.show()
 
 if __name__ == "__main__":
     try:
