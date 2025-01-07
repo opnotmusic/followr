@@ -33,14 +33,14 @@ class SocialMediaBot:
         self.max_comments = int(10 * 0.85)  # Adjusted for comments
 
         self.comments_pool = [
-            "Amazing post! 👏",
-            "Great content, keep it up! 🚀",
-            "Love this! ❤️",
-            "So inspiring! 🌟",
-            "Wow, just wow! 🔥",
-            "This made my day! 😊",
-            "Totally agree! 🙌",
-            "Brilliant work! 💡",
+            "Amazing post! 🔥👽👽👽",
+            "Great content, keep it up! 🚀👽👽👽",
+            "Love this! 💗ྀི👽👽👽",
+            "So inspiring! 🌟👽👽👽",
+            "Wow, just wow! 👽👽👽🔥",
+            "This made my day! 👽👽👽🌌",
+            "Totally agree! 👽👽👽",
+            "Brilliant work! 👽👽👽",
         ]
 
         # Log file to track interactions
