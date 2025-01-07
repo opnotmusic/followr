@@ -65,7 +65,7 @@ class SocialMediaBot:
             CREATE TABLE IF NOT EXISTS daily_limits (
                 platform TEXT PRIMARY KEY,
                 date TEXT NOT NULL,
-                limit INTEGER NOT NULL
+                daily_limit INTEGER NOT NULL
             )
             """
         )
