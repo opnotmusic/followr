@@ -9,9 +9,5 @@ requirements = python3,kivy,python-dotenv,cryptography,sqlite3,requests,telegram
 orientation = portrait
 fullscreen = 0
 android.permissions = INTERNET
+icon.filename = icon.png  # Set the default alien icon
 presplash.filename = presplash.png
-icon.filename = icon.png
-
-[buildozer]
-log_level = 2
-warn_on_root = 1
