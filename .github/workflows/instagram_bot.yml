@@ -43,11 +43,12 @@ jobs:
         GOOGLE_PASSWORD: ${{ secrets.GOOGLE_PASSWORD }}
       run: python main.py | tee bot_log.txt
 
-    - name: Upload logs and screenshots
+    - name: Backup Database and Logs
       if: always()
       uses: actions/upload-artifact@v3
       with:
         name: bot-artifacts
         path: |
           bot_log.txt
+          interactions.db
           *.png
