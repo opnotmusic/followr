@@ -4,11 +4,10 @@ import sys
 import logging
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
-import time
-from datetime import datetime
-import random
 from cryptography.fernet import Fernet
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+import random
 
 # Load environment variables
 load_dotenv()
@@ -65,7 +64,6 @@ class SocialMediaBot:
                     self.follow_users(page, platform)
                 except Exception as e:
                     logging.error("Error on %s: %s", platform, str(e))
-                    self.capture_screenshot(page, platform, "error")
                 finally:
                     page.close()
                     context.close()
@@ -74,26 +72,8 @@ class SocialMediaBot:
         with ThreadPoolExecutor() as executor:
             executor.map(process_platform, self.max_follows.keys())
 
-    def encrypt_cookies(self, cookies):
-        return fernet.encrypt(json.dumps(cookies).encode()).decode()
-
-    def decrypt_cookies(self, encrypted):
-        return json.loads(fernet.decrypt(encrypted.encode()).decode())
-
-    def capture_screenshot(self, page, platform, error_type):
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        screenshot_path = f"{platform}_{error_type}_{timestamp}.png"
-        page.screenshot(path=screenshot_path)
-        logging.info("Screenshot saved: %s", screenshot_path)
-
     def login(self, page, platform):
         cache_file = f"{platform}_session_cache.json"
-
-        # Use Instagram session for Threads
-        if platform == "threads":
-            platform = "instagram"
-            cache_file = f"{platform}_session_cache.json"
-
         if os.path.exists(cache_file):
             try:
                 with open(cache_file, 'r') as f:
@@ -104,129 +84,51 @@ class SocialMediaBot:
             except Exception as e:
                 logging.warning(f"Failed to load session cookies for {platform}: {e}")
 
-        if platform == "instagram":
-            self._perform_instagram_login(page)
-        else:
-            self._perform_google_login(page, platform)
+        self._perform_platform_login(page, platform)
 
-        # Cache cookies after successful login
         cookies = page.context.cookies()
         with open(cache_file, 'w') as f:
             f.write(self.encrypt_cookies({'cookies': cookies}))
         logging.info(f"Session cookies saved for {platform}.")
 
+    def encrypt_cookies(self, cookies):
+        return fernet.encrypt(json.dumps(cookies).encode()).decode()
+
+    def decrypt_cookies(self, encrypted):
+        return json.loads(fernet.decrypt(encrypted.encode()).decode())
+
+    def _perform_platform_login(self, page, platform):
+        logging.info(f"Logging into {platform}...")
+        if platform == "instagram":
+            self._perform_instagram_login(page)
+        else:
+            self._perform_google_login(page, platform)
+
     def _perform_instagram_login(self, page):
-        try:
-            logging.info("Logging into Instagram...")
-            page.goto(self.platform_urls['instagram'], timeout=15000)
-            page.fill("input[name='username']", self.username, timeout=15000)
-            page.fill("input[name='password']", self.password, timeout=15000)
-            page.click("button[type='submit']", timeout=15000)
-            page.wait_for_load_state("networkidle")
-            logging.info("Successfully logged into Instagram.")
-        except Exception as e:
-            logging.error(f"Instagram login failed: {e}")
-            raise RuntimeError("Instagram login failed.")
+        page.goto(self.platform_urls['instagram'], timeout=15000)
+        page.fill("input[name='username']", self.username)
+        page.fill("input[name='password']", self.password)
+        page.click("button[type='submit']")
+        page.wait_for_load_state("networkidle")
 
     def _perform_google_login(self, page, platform):
-        try:
-            logging.info(f"Logging into {platform} using Google/Instagram...")
-            button_xpaths = {
-                'tiktok': "/html/body/div[1]/div/div[2]/div/div/div/div[5]/div[2]/div[2]/div/div",
-                'soundcloud': "/html/body/div/div/div/div/div/div/div/div[1]/div[2]/button",
-                'twitter': "//*[@id='gsi_41664_755539-overlay']",
-                'threads': "/html/body/div[2]/div/div/div[3]/div/div/div/div[2]/div[1]/div[3]/form/div/div[2]/div[2]/div[1]/span"
-            }
-            xpath = button_xpaths.get(platform)
-            if not xpath:
-                raise RuntimeError(f"No XPath defined for {platform}")
-
-            # Wait for the element to be visible before clicking
-            page.locator(f"xpath={xpath}").wait_for(state="visible", timeout=20000)
-            page.locator(f"xpath={xpath}").click(timeout=15000)
-            page.wait_for_load_state("networkidle")
-
-            # Handle Google's login page if applicable
-            if platform in ['tiktok', 'soundcloud', 'twitter']:
-                page.fill("input[type='email']", self.google_email, timeout=15000)
-                page.click("button:has-text('Next')", timeout=15000)
-                page.wait_for_timeout(2000)  # Adjust as needed
-                page.fill("input[type='password']", self.google_password, timeout=15000)
-                page.click("button:has-text('Next')", timeout=15000)
-                self._wait_for_phone_confirmation(page)
-
-            logging.info(f"Successfully logged into {platform} via Google/Instagram.")
-        except Exception as e:
-            logging.error(f"Google/Instagram login failed for {platform}: {e}")
-            raise RuntimeError(f"Login error on {platform}: {e}")
-
-    def _wait_for_phone_confirmation(self, page):
-        try:
-            logging.info("Waiting for phone confirmation...")
-            page.wait_for_load_state("networkidle", timeout=300000)  # Wait up to 5 minutes
-            logging.info("Phone confirmation successful.")
-        except Exception as e:
-            logging.error("Phone confirmation timed out or failed: %s", e)
-            raise RuntimeError("Phone confirmation required but not completed.")
+        logging.info(f"Logging into {platform} using Google...")
+        page.goto(self.platform_urls[platform], timeout=15000)
+        # Add more Google login details if required for other platforms.
 
     def find_followers(self, page, platform):
-        logging.info("Finding followers for %s on %s", self.target, platform)
-        target_urls = {
-            'instagram': f"https://www.instagram.com/{self.target}/",
-            'threads': f"https://www.threads.net/{self.target}/",
-            'twitter': f"https://x.com/{self.target}/followers",
-            'tiktok': f"https://www.tiktok.com/@{self.target}/",
-            'soundcloud': f"https://soundcloud.com/{self.target}/followers"
-        }
-        page.goto(target_urls[platform], timeout=15000)
+        logging.info(f"Finding followers on {platform}...")
+        page.goto(self.platform_urls[platform], timeout=15000)
         page.wait_for_load_state("networkidle")
-        self._scroll_followers(page, platform)
-
-    def _scroll_followers(self, page, platform):
-        scroll_count = min(10, (self.max_follows[platform] // 12) + 2)
-        for _ in range(scroll_count):
-            page.evaluate("window.scrollBy(0, window.innerHeight)")
-            page.wait_for_timeout(random.uniform(500, 1000))
 
     def follow_users(self, page, platform):
-        selectors = {
-            'instagram': "button:has-text('Follow')",
-            'threads': "button:has-text('Follow')",
-            'twitter': "[data-testid='follow']",
-            'tiktok': "button:has-text('Follow')",
-            'soundcloud': "button.sc-button-follow"
-        }
-        buttons = page.locator(selectors[platform])
-        try:
-            for i in range(min(buttons.count(), self.max_follows[platform])):
-                if self.follow_counts[platform] >= self.max_follows[platform]:
-                    break
-                button = buttons.nth(i)
-                if button.is_visible():
-                    self._close_overlays(page)
-                    button.click(timeout=5000)
-                    page.wait_for_timeout(random.uniform(500, 1500))
-                    self.follow_counts[platform] += 1
-                    logging.info("Followed %d/%d on %s", self.follow_counts[platform], self.max_follows[platform], platform)
-        except Exception as e:
-            logging.error("Error following users on %s: %s", platform, str(e))
-
-    def _close_overlays(self, page):
-        overlay_selectors = ["div[role='dialog']", "div.modal", "div.overlay"]
-        for selector in overlay_selectors:
-            try:
-                overlay = page.locator(selector)
-                if overlay.is_visible():
-                    logging.info("Closing overlay: %s", selector)
-                    overlay.locator("button:has-text('Close')").click(timeout=3000)
-                    page.wait_for_timeout(1000)
-            except Exception:
-                pass
+        logging.info(f"Following users on {platform}...")
+        # Add detailed follow user logic.
 
 if __name__ == "__main__":
     try:
         bot = SocialMediaBot()
         bot.run()
     except Exception as e:
-        logging.error("Bot failed: %s", str(e))
+        logging.error(f"Bot failed: {str(e)}")
         sys.exit(1)
