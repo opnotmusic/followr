@@ -4,6 +4,8 @@ import logging
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 import matplotlib.pyplot as plt
+import sqlite3
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -87,6 +89,32 @@ class SocialMediaBot:
         self.max_comments = int(10 * 0.85)  # Limit to 85% of platform restrictions
         self.interaction_count = {platform: 0 for platform in self.platforms}
 
+        # Initialize database
+        self.db_connection = sqlite3.connect("interactions.db")
+        self.init_database()
+
+    def init_database(self):
+        cursor = self.db_connection.cursor()
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS interactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                details TEXT
+            )
+            """
+        )
+        self.db_connection.commit()
+
+    def log_interaction(self, platform, details):
+        cursor = self.db_connection.cursor()
+        cursor.execute(
+            "INSERT INTO interactions (platform, timestamp, details) VALUES (?, ?, ?)",
+            (platform, datetime.now().isoformat(), details)
+        )
+        self.db_connection.commit()
+
     def generate_all_comments(self, platform):
         username = self.targets[platform]
         base = base_comments["general"]
@@ -147,6 +175,7 @@ class SocialMediaBot:
                 self.instagram_login(page)
                 # Simulate interactions
                 self.interaction_count["instagram"] += 5  # Example increment
+                self.log_interaction("instagram", "Simulated 5 interactions")
             except Exception as e:
                 logging.error(f"Instagram interaction failed: {e}")
             finally:
@@ -165,11 +194,13 @@ class SocialMediaBot:
     def twitter_interact(self):
         # Simulate interactions
         self.interaction_count["twitter"] += 3  # Example increment
+        self.log_interaction("twitter", "Simulated 3 interactions")
         logging.info("Twitter interactions simulated.")
 
     def soundcloud_interact(self):
         # Simulate interactions
         self.interaction_count["soundcloud"] += 7  # Example increment
+        self.log_interaction("soundcloud", "Simulated 7 interactions")
         logging.info("SoundCloud interactions simulated.")
 
     def display_interaction_summary(self):
