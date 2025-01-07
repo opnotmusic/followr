@@ -48,6 +48,16 @@ base_comments = {
             "Totally agree with this tweet! 👽✨",
             "Great insight, keep it up! 🌟💬",
         ],
+        "tiktok": [
+            "Awesome video! 🎥🔥",
+            "Such creativity! 🎬👽",
+            "Loved this! 🎉✨",
+        ],
+        "threads": [
+            "Great thread! 🧵🔥",
+            "Insightful post! ✍️✨",
+            "Very engaging content! 🌟💬",
+        ],
     },
 }
 
@@ -79,13 +89,23 @@ class SocialMediaBot:
                 "username": os.getenv("SOUNDCLOUD_USERNAME"),
                 "password": os.getenv("SOUNDCLOUD_PASSWORD")
             },
+            "tiktok": {
+                "username": os.getenv("TIKTOK_USERNAME"),
+                "password": os.getenv("TIKTOK_PASSWORD")
+            },
+            "threads": {
+                "username": os.getenv("THREADS_USERNAME"),
+                "password": os.getenv("THREADS_PASSWORD")
+            },
         }
         self.targets = {
             "instagram": os.getenv("INSTAGRAM_TARGET", "example_target"),
             "twitter": os.getenv("TWITTER_TARGET", "example_target"),
             "soundcloud": os.getenv("SOUNDCLOUD_TARGET", "example_artist"),
+            "tiktok": os.getenv("TIKTOK_TARGET", "example_target"),
+            "threads": os.getenv("THREADS_TARGET", "example_target"),
         }
-        self.platforms = ["instagram", "twitter", "soundcloud"]
+        self.platforms = ["instagram", "twitter", "soundcloud", "tiktok", "threads"]
         self.max_comments = int(10 * 0.85)  # Limit to 85% of platform restrictions
         self.interaction_count = {platform: 0 for platform in self.platforms}
 
@@ -158,6 +178,10 @@ class SocialMediaBot:
                     self.twitter_interact()
                 elif platform == "soundcloud":
                     self.soundcloud_interact()
+                elif platform == "tiktok":
+                    self.tiktok_interact()
+                elif platform == "threads":
+                    self.threads_interact()
                 logging.info(f"Finished interactions on {platform.capitalize()}.")
             except Exception as e:
                 logging.error(f"Error on {platform.capitalize()}: {e}")
@@ -165,43 +189,67 @@ class SocialMediaBot:
         # Output interaction counts
         self.display_interaction_summary()
 
-    def instagram_interact(self):
+    def tiktok_interact(self):
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             context = browser.new_context()
             page = context.new_page()
 
             try:
-                self.instagram_login(page)
-                # Simulate interactions
-                self.interaction_count["instagram"] += 5  # Example increment
-                self.log_interaction("instagram", "Simulated 5 interactions")
+                creds = self.credentials["tiktok"]
+                page.goto("https://www.tiktok.com/login")
+                page.fill("input[name='username']", creds["username"])
+                page.fill("input[name='password']", creds["password"])
+                page.click("button[type='submit']")
+                page.wait_for_load_state("networkidle")
+
+                page.goto(f"https://www.tiktok.com/@{self.targets['tiktok']}")
+                videos = page.locator(".tiktok-1s3x18h-DivContainer.e1yey0rl0 > a").evaluate_all(
+                    "links => links.map(link => link.href)"
+                )
+
+                for video in videos[:5]:  # Limit to 5 videos
+                    page.goto(video)
+                    comment = random.choice(self.generate_all_comments("tiktok")["english"])
+                    page.fill("textarea[placeholder='Add comment']", comment)
+                    page.click("button[type='submit']")
+                    self.interaction_count["tiktok"] += 1
+                    self.log_interaction("tiktok", f"Commented: {comment}")
             except Exception as e:
-                logging.error(f"Instagram interaction failed: {e}")
+                logging.error(f"TikTok interaction failed: {e}")
             finally:
                 browser.close()
 
-    def instagram_login(self, page):
-        creds = self.credentials["instagram"]
-        logging.info("Logging into Instagram...")
-        page.goto("https://www.instagram.com/accounts/login/")
-        page.fill("input[name='username']", creds["username"])
-        page.fill("input[name='password']", creds["password"])
-        page.click("button[type='submit']")
-        page.wait_for_load_state("networkidle")
-        logging.info("Instagram login successful.")
+    def threads_interact(self):
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context()
+            page = context.new_page()
 
-    def twitter_interact(self):
-        # Simulate interactions
-        self.interaction_count["twitter"] += 3  # Example increment
-        self.log_interaction("twitter", "Simulated 3 interactions")
-        logging.info("Twitter interactions simulated.")
+            try:
+                creds = self.credentials["threads"]
+                page.goto("https://threads.net/login")
+                page.fill("input[name='username']", creds["username"])
+                page.fill("input[name='password']", creds["password"])
+                page.click("button[type='submit']")
+                page.wait_for_load_state("networkidle")
 
-    def soundcloud_interact(self):
-        # Simulate interactions
-        self.interaction_count["soundcloud"] += 7  # Example increment
-        self.log_interaction("soundcloud", "Simulated 7 interactions")
-        logging.info("SoundCloud interactions simulated.")
+                page.goto(f"https://threads.net/@{self.targets['threads']}")
+                posts = page.locator("article a").evaluate_all(
+                    "links => links.map(link => link.href)"
+                )
+
+                for post in posts[:5]:  # Limit to 5 posts
+                    page.goto(post)
+                    comment = random.choice(self.generate_all_comments("threads")["english"])
+                    page.fill("textarea", comment)
+                    page.click("button[type='submit']")
+                    self.interaction_count["threads"] += 1
+                    self.log_interaction("threads", f"Commented: {comment}")
+            except Exception as e:
+                logging.error(f"Threads interaction failed: {e}")
+            finally:
+                browser.close()
 
     def display_interaction_summary(self):
         logging.info("Interaction Summary:")
@@ -217,7 +265,7 @@ class SocialMediaBot:
 
         # Plotting the statistics
         plt.figure(figsize=(10, 6))
-        plt.bar(platforms, counts, color=['blue', 'orange', 'green'])
+        plt.bar(platforms, counts, color=['blue', 'orange', 'green', 'purple', 'red'])
         plt.xlabel("Platforms")
         plt.ylabel("Number of Interactions")
         plt.title("Social Media Interactions per Platform")
