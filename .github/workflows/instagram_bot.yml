@@ -8,14 +8,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: Checkout the Repository
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      # Step 2: Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: 3.9
 
+      # Step 3: Install Dependencies
       - name: Install Dependencies
         run: |
           python -m venv venv
@@ -23,18 +26,22 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      # Step 4: Run Unit Tests
       - name: Run Tests
         run: |
           source venv/bin/activate
           python -m unittest discover
 
+      # Step 5: Package Application
       - name: Package Application
         run: |
           source venv/bin/activate
+          pip install pyinstaller  # Ensure pyinstaller is available
           pyinstaller --onefile main.py
 
+      # Step 6: Upload Build Artifact
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v3
         with:
           name: social-media-bot
-          path: dist/main
+          path: dist/main  # Adjust if necessary
