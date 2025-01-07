@@ -52,7 +52,8 @@ class SocialMediaBot:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE,
                 activation_code TEXT NOT NULL,
-                promo_image_url TEXT
+                promo_image_url TEXT,
+                behavior TEXT DEFAULT 'default'
             )
             """
         )
@@ -77,8 +78,8 @@ class SocialMediaBot:
 
         # Store user details in the database
         cursor.execute(
-            "INSERT INTO users (username, activation_code, promo_image_url) VALUES (?, ?, ?)",
-            (username, activation_code, promo_image_url)
+            "INSERT INTO users (username, activation_code, promo_image_url, behavior) VALUES (?, ?, ?, ?)",
+            (username, activation_code, promo_image_url, "default")
         )
         self.db_connection.commit()
         logging.info(f"User {username} added with promo image URL: {promo_image_url}")
@@ -123,12 +124,16 @@ class SocialMediaBot:
         while True:
             print("\n--- Admin Console ---")
             print("1. View Users")
-            print("2. Exit")
+            print("2. Change User Behavior")
+            print("3. Exit")
             choice = input("Enter your choice: ")
 
             if choice == "1":
                 self.view_users()
             elif choice == "2":
+                username = input("Enter the username to modify: ")
+                self.change_user_behavior(username)
+            elif choice == "3":
                 print("Exiting admin console...")
                 break
             else:
@@ -137,12 +142,46 @@ class SocialMediaBot:
     def view_users(self):
         """Display all registered users."""
         cursor = self.db_connection.cursor()
-        cursor.execute("SELECT username, promo_image_url FROM users")
+        cursor.execute("SELECT username, promo_image_url, behavior FROM users")
         users = cursor.fetchall()
         print("\n--- Registered Users ---")
         for user in users:
-            print(f"Username: {user[0]}, Promo Image: {user[1]}")
+            print(f"Username: {user[0]}, Promo Image: {user[1]}, Behavior: {user[2]}")
         print("-------------------------")
+
+    def change_user_behavior(self, username):
+        """Allow the admin to change a user's behavior."""
+        cursor = self.db_connection.cursor()
+        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+        user = cursor.fetchone()
+
+        if not user:
+            print(f"User {username} not found.")
+            return
+
+        print(f"Current behavior for {username}: {user[4]}")
+        print("Available behaviors:")
+        print("1. Default")
+        print("2. VIP")
+        print("3. High Engagement Mode")
+        print("4. Custom")
+        choice = input("Select the new behavior: ")
+
+        behaviors = {
+            "1": "default",
+            "2": "vip",
+            "3": "high_engagement",
+            "4": "custom"
+        }
+        new_behavior = behaviors.get(choice, "default")
+
+        cursor.execute(
+            "UPDATE users SET behavior = ? WHERE username = ?",
+            (new_behavior, username)
+        )
+        self.db_connection.commit()
+        print(f"Behavior for {username} updated to {new_behavior}.")
+
 
 if __name__ == "__main__":
     bot = SocialMediaBot()
