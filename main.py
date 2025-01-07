@@ -30,105 +30,100 @@ class SocialMediaBot:
         if not self.google_email or not self.google_password:
             raise ValueError("Missing Google credentials! Set GOOGLE_EMAIL and GOOGLE_PASSWORD in secrets.")
 
-        self.max_follows = {
-            'instagram': 30,
-            'threads': 35,
-            'twitter': 30,
-            'tiktok': 30,
-            'soundcloud': 35
+        self.max_interactions = {
+            'likes': 20,  # Max likes per session
+            'comments': 10,  # Max comments per session
+            'follows': 30,  # Max follows per session
         }
 
-        self.platform_urls = {
-            'instagram': 'https://www.instagram.com/accounts/login/',
-            'threads': 'https://www.threads.net/login',
-            'twitter': 'https://x.com/i/flow/login',
-            'tiktok': 'https://www.tiktok.com/login',
-            'soundcloud': 'https://soundcloud.com/signin'
-        }
-
-        self.follow_counts = {platform: 0 for platform in self.max_follows.keys()}
+        self.comments_pool = [
+            "Amazing post! 👏",
+            "Great content, keep it up! 🚀",
+            "Love this! ❤️",
+            "So inspiring! 🌟",
+            "Wow, just wow! 🔥",
+            "This made my day! 😊",
+            "Totally agree! 🙌",
+            "Brilliant work! 💡",
+        ]
 
     def run(self):
-        def process_platform(platform):
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                context = browser.new_context(
-                    viewport={'width': 1280, 'height': 800},
-                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                )
-                page = context.new_page()
-                try:
-                    logging.info("Processing %s...", platform)
-                    self.login(page, platform)
-                    self.find_followers(page, platform)
-                    self.follow_users(page, platform)
-                except Exception as e:
-                    logging.error("Error on %s: %s", platform, str(e))
-                finally:
-                    page.close()
-                    context.close()
-                    browser.close()
-
-        with ThreadPoolExecutor() as executor:
-            executor.map(process_platform, self.max_follows.keys())
-
-    def login(self, page, platform):
-        cache_file = f"{platform}_session_cache.json"
-        if os.path.exists(cache_file):
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                viewport={'width': 1280, 'height': 800},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            )
+            page = context.new_page()
             try:
-                with open(cache_file, 'r') as f:
-                    cookies = self.decrypt_cookies(f.read())
-                    page.context.add_cookies(cookies.get('cookies', []))
-                logging.info(f"Loaded session cookies for {platform}.")
-                return
+                logging.info("Starting bot...")
+                self.login(page)
+                self.interact_with_posts(page)
             except Exception as e:
-                logging.warning(f"Failed to load session cookies for {platform}: {e}")
+                logging.error("Error: %s", str(e))
+            finally:
+                browser.close()
 
-        self._perform_platform_login(page, platform)
-
-        cookies = page.context.cookies()
-        with open(cache_file, 'w') as f:
-            f.write(self.encrypt_cookies({'cookies': cookies}))
-        logging.info(f"Session cookies saved for {platform}.")
-
-    def encrypt_cookies(self, cookies):
-        return fernet.encrypt(json.dumps(cookies).encode()).decode()
-
-    def decrypt_cookies(self, encrypted):
-        return json.loads(fernet.decrypt(encrypted.encode()).decode())
-
-    def _perform_platform_login(self, page, platform):
-        logging.info(f"Logging into {platform}...")
-        if platform == "instagram":
-            self._perform_instagram_login(page)
-        else:
-            self._perform_google_login(page, platform)
-
-    def _perform_instagram_login(self, page):
-        page.goto(self.platform_urls['instagram'], timeout=15000)
+    def login(self, page):
+        logging.info("Logging into Instagram...")
+        page.goto("https://www.instagram.com/accounts/login/", timeout=15000)
         page.fill("input[name='username']", self.username)
         page.fill("input[name='password']", self.password)
         page.click("button[type='submit']")
         page.wait_for_load_state("networkidle")
+        logging.info("Login successful.")
 
-    def _perform_google_login(self, page, platform):
-        logging.info(f"Logging into {platform} using Google...")
-        page.goto(self.platform_urls[platform], timeout=15000)
-        # Add more Google login details if required for other platforms.
-
-    def find_followers(self, page, platform):
-        logging.info(f"Finding followers on {platform}...")
-        page.goto(self.platform_urls[platform], timeout=15000)
+    def interact_with_posts(self, page):
+        logging.info("Navigating to target account: %s", self.target)
+        page.goto(f"https://www.instagram.com/{self.target}/", timeout=15000)
         page.wait_for_load_state("networkidle")
+        post_selectors = "article a"
 
-    def follow_users(self, page, platform):
-        logging.info(f"Following users on {platform}...")
-        # Add detailed follow user logic.
+        # Open posts to interact
+        post_links = page.locator(post_selectors).evaluate_all("links => links.map(link => link.href)")
+        logging.info("Found %d posts to interact with.", len(post_links))
+
+        likes_count = 0
+        comments_count = 0
+
+        for link in post_links:
+            if likes_count >= self.max_interactions['likes'] and comments_count >= self.max_interactions['comments']:
+                break
+
+            page.goto(link)
+            page.wait_for_load_state("networkidle")
+
+            # Like the post
+            if random.choice([True, False]) and likes_count < self.max_interactions['likes']:
+                try:
+                    like_button = page.locator("svg[aria-label='Like']").nth(0)
+                    if like_button:
+                        like_button.click()
+                        likes_count += 1
+                        logging.info("Liked post %d/%d", likes_count, self.max_interactions['likes'])
+                        page.wait_for_timeout(random.randint(500, 2000))
+                except Exception as e:
+                    logging.warning("Failed to like post: %s", str(e))
+
+            # Comment on the post
+            if random.choice([True, False]) and comments_count < self.max_interactions['comments']:
+                try:
+                    comment = random.choice(self.comments_pool)
+                    page.fill("textarea", comment)
+                    page.click("button:has-text('Post')")
+                    comments_count += 1
+                    logging.info("Commented on post %d/%d: %s", comments_count, self.max_interactions['comments'], comment)
+                    page.wait_for_timeout(random.randint(500, 2000))
+                except Exception as e:
+                    logging.warning("Failed to comment on post: %s", str(e))
+
+            # Pause randomly to mimic human behavior
+            page.wait_for_timeout(random.randint(1000, 3000))
 
 if __name__ == "__main__":
     try:
         bot = SocialMediaBot()
         bot.run()
     except Exception as e:
-        logging.error(f"Bot failed: {str(e)}")
+        logging.error("Bot failed: %s", str(e))
         sys.exit(1)
