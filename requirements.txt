@@ -1,3 +1,5 @@
-playwright
-python-dotenv
+kivy
 cryptography
+sqlite3
+python-telegram-bot
+cython
