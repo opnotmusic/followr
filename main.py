@@ -223,8 +223,25 @@ class SocialMediaBot:
         decrypted_chat_id = self.secure_storage.decrypt(self.telegram_chat_id)
         logging.info(f"Telegram Bot validated for Chat ID: {decrypted_chat_id}")
 
+    def get_daily_limit(self, platform, default_limit):
+        cursor = self.db_connection.cursor()
+        today = datetime.now().strftime("%Y-%m-%d")
+        cursor.execute(
+            "SELECT daily_limit FROM daily_limits WHERE platform = ? AND date = ?",
+            (platform, today)
+        )
+        result = cursor.fetchone()
+        if result:
+            return result[0]
+        else:
+            cursor.execute(
+                "INSERT INTO daily_limits (platform, date, daily_limit) VALUES (?, ?, ?)",
+                (platform, today, default_limit)
+            )
+            self.db_connection.commit()
+            return default_limit
+
     def run(self):
-        self.check_and_offer_cloud_service()
         base_limits = {"instagram": 200}
         for platform in self.platforms:
             limit = self.get_daily_limit(platform, base_limits[platform])
