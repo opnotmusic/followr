@@ -1,7 +1,6 @@
-kivy
-cryptography
-python-telegram-bot
-cython
 python-dotenv
-
-
+cryptography
+sqlite3
+requests
+telegram
+matplotlib
