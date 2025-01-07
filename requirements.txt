@@ -4,5 +4,5 @@ sqlite3
 python-telegram-bot
 cython
 python-dotenv
-python-telegram-bot
+
 
