@@ -12,26 +12,40 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 # Base comments in different languages
 base_comments = {
-    "english": [
-        "Amazing post, @{username}! 🔥👽👽👽",
-        "Great content, keep it up, @{username}! 🚀👽👽👽",
-        "Love this, @{username}! 💗ྀི👽👽👽",
-        "So inspiring, @{username}! 🌟👽👽👽",
-        "Wow, just wow, @{username}! 👽👽👽🔥",
-        "This made my day, @{username}! 👽👽👽🌌",
-        "Totally agree, @{username}! 👽👽👽",
-        "Brilliant work, @{username}! 👽👽👽",
-    ],
-    "spanish": [
-        "¡Increíble publicación, @{username}! 🔥👽👽👽",
-        "¡Gran contenido, sigue así, @{username}! 🚀👽👽👽",
-        "¡Me encanta esto, @{username}! 💗ྀི👽👽👽",
-        "¡Tan inspirador, @{username}! 🌟👽👽👽",
-        "¡Wow, simplemente wow, @{username}! 👽👽👽🔥",
-        "¡Esto me hizo el día, @{username}! 👽👽👽🌌",
-        "¡Totalmente de acuerdo, @{username}! 👽👽👽",
-        "¡Trabajo brillante, @{username}! 👽👽👽",
-    ],
+    "general": {
+        "english": [
+            "Amazing post! 🔥👽👽👽",
+            "Great content, keep it up! 🚀👽👽👽",
+            "Love this! 💗ྀི👽👽👽",
+            "So inspiring! 🌟👽👽👽",
+            "Wow, just wow! 👽👽👽🔥",
+            "This made my day! 👽👽👽🌌",
+            "Totally agree! 👽👽👽",
+            "Brilliant work! 👽👽👽",
+        ],
+        "spanish": [
+            "¡Increíble publicación! 🔥👽👽👽",
+            "¡Gran contenido, sigue así! 🚀👽👽👽",
+            "¡Me encanta esto! 💗ྀི👽👽👽",
+            "¡Tan inspirador! 🌟👽👽👽",
+            "¡Wow, simplemente wow! 👽👽👽🔥",
+            "¡Esto me hizo el día! 👽👽👽🌌",
+            "¡Totalmente de acuerdo! 👽👽👽",
+            "¡Trabajo brillante! 👽👽👽",
+        ],
+    },
+    "platform_specific": {
+        "soundcloud": [
+            "Great track! 🎵🔥",
+            "This is on repeat! 🎧✨",
+            "Amazing vibes! 🎶👽",
+        ],
+        "twitter": [
+            "Interesting take! 🐦🔥",
+            "Totally agree with this tweet! 👽✨",
+            "Great insight, keep it up! 🌟💬",
+        ],
+    },
 }
 
 # Emoji pool for comment variations
@@ -49,29 +63,53 @@ sad_keywords = [
 
 class SocialMediaBot:
     def __init__(self):
-        self.username = os.getenv("INSTAGRAM_USERNAME")
-        self.password = os.getenv("INSTAGRAM_PASSWORD")
-        self.target = os.getenv("TARGET_ACCOUNT", "example_target")
-        if not self.username or not self.password:
-            raise ValueError("Missing Instagram credentials! Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD in your .env file.")
-
-        # Interaction limits
+        self.credentials = {
+            "instagram": {
+                "username": os.getenv("INSTAGRAM_USERNAME"),
+                "password": os.getenv("INSTAGRAM_PASSWORD")
+            },
+            "twitter": {
+                "username": os.getenv("TWITTER_USERNAME"),
+                "password": os.getenv("TWITTER_PASSWORD")
+            },
+            "soundcloud": {
+                "username": os.getenv("SOUNDCLOUD_USERNAME"),
+                "password": os.getenv("SOUNDCLOUD_PASSWORD")
+            },
+        }
+        self.targets = {
+            "instagram": os.getenv("INSTAGRAM_TARGET", "example_target"),
+            "twitter": os.getenv("TWITTER_TARGET", "example_target"),
+            "soundcloud": os.getenv("SOUNDCLOUD_TARGET", "example_artist"),
+        }
+        self.platforms = ["instagram", "twitter", "soundcloud"]
         self.max_comments = int(10 * 0.85)  # Limit to 85% of platform restrictions
-        self.comments_pool = self.generate_all_comments("example_user")
 
-    def generate_all_comments(self, username):
+    def generate_all_comments(self, platform):
+        username = self.targets[platform]
+        base = base_comments["general"]
+        platform_specific = base_comments.get("platform_specific", {}).get(platform, [])
         all_comments = {}
-        for language, comments in base_comments.items():
-            updated_comments = [comment.replace("{username}", username) for comment in comments]
+
+        for language, comments in base.items():
+            updated_comments = [
+                self.modify_comment(comment, username) for comment in comments
+            ] + platform_specific
             all_comments[language] = self.generate_variations(updated_comments, 100)  # Generate 100 variations per language
         return all_comments
+
+    def modify_comment(self, comment, username):
+        # Randomly decide to include username or not
+        if random.choice([True, False]):
+            return comment.replace("@{username}", username)
+        return comment.replace("@{username}", "")
 
     def generate_variations(self, base_comments, count):
         variations = set()
         while len(variations) < count:
             for comment in base_comments:
                 random_emojis = " ".join(random.choices(emoji_pool, k=random.randint(2, 4)))
-                variations.add(f"{comment} {random_emojis}")
+                variations.add(f"{comment} {random_emojis}".strip())
                 if len(variations) >= count:
                     break
         return list(variations)
@@ -81,58 +119,50 @@ class SocialMediaBot:
         return any(keyword in lower_text for keyword in sad_keywords)
 
     def run(self):
+        for platform in self.platforms:
+            try:
+                logging.info(f"Starting interactions on {platform.capitalize()}...")
+                if platform == "instagram":
+                    self.instagram_interact()
+                elif platform == "twitter":
+                    self.twitter_interact()
+                elif platform == "soundcloud":
+                    self.soundcloud_interact()
+                logging.info(f"Finished interactions on {platform.capitalize()}.")
+            except Exception as e:
+                logging.error(f"Error on {platform.capitalize()}: {e}")
+
+    def instagram_interact(self):
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             context = browser.new_context()
             page = context.new_page()
 
             try:
-                self.login(page)
-                self.interact_with_posts(page)
+                self.instagram_login(page)
+                # Add interaction logic here...
             except Exception as e:
-                logging.error(f"Error during bot execution: {e}")
+                logging.error(f"Instagram interaction failed: {e}")
             finally:
                 browser.close()
 
-    def login(self, page):
+    def instagram_login(self, page):
+        creds = self.credentials["instagram"]
         logging.info("Logging into Instagram...")
         page.goto("https://www.instagram.com/accounts/login/")
-        page.fill("input[name='username']", self.username)
-        page.fill("input[name='password']", self.password)
+        page.fill("input[name='username']", creds["username"])
+        page.fill("input[name='password']", creds["password"])
         page.click("button[type='submit']")
         page.wait_for_load_state("networkidle")
-        logging.info("Login successful.")
+        logging.info("Instagram login successful.")
 
-    def interact_with_posts(self, page):
-        logging.info(f"Navigating to target account: @{self.target}")
-        page.goto(f"https://www.instagram.com/{self.target}/")
-        page.wait_for_load_state("networkidle")
+    def twitter_interact(self):
+        # Placeholder for Twitter interactions
+        logging.info("Twitter interactions not yet implemented.")
 
-        post_links = page.locator("article a").evaluate_all("links => links.map(link => link.href)")
-        logging.info(f"Found {len(post_links)} posts to interact with.")
-
-        comments_count = 0
-        for link in post_links:
-            if comments_count >= self.max_comments:
-                break
-
-            page.goto(link)
-            page.wait_for_load_state("networkidle")
-            post_text = page.locator("article").text_content()
-
-            if self.is_sad_post(post_text):
-                logging.info("Sad post detected, skipping comment.")
-                continue
-
-            try:
-                comment = random.choice(self.comments_pool["english"])
-                page.fill("textarea", comment)
-                page.click("button:has-text('Post')")
-                comments_count += 1
-                logging.info(f"Commented on post {comments_count}/{self.max_comments}: {comment}")
-                page.wait_for_timeout(random.randint(1000, 3000))
-            except Exception as e:
-                logging.warning(f"Failed to comment on post: {e}")
+    def soundcloud_interact(self):
+        # Placeholder for SoundCloud interactions
+        logging.info("SoundCloud interactions not yet implemented.")
 
 if __name__ == "__main__":
     try:
