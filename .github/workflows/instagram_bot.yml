@@ -1,28 +1,35 @@
-name: floww
+name: Social Media Bot Deployment
+
 on:
   push:
     branches:
       - main
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v2
-      - name: Set up Python
-        uses: actions/setup-python@v2
+      # Step 1: Checkout the repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Step 2: Set up Python
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v4
         with:
-          python-version: "3.8"
-      - name: Install Dependencies
+          python-version: '3.8'
+
+      # Step 3: Create and activate virtual environment
+      - name: Create and activate virtual environment
         run: |
-          sudo apt update
-          sudo apt install -y build-essential openjdk-11-jdk libssl-dev libffi-dev python3-dev
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Initialize Buildozer
-        run: buildozer init
-      - name: Build APK
-        run: buildozer -v android debug
-      - name: Upload APK
-        uses: actions/upload-artifact@v2
-        with:
-          name: floww-apk
-          path: bin/
+
+      # Step 4: Run the application
+      - name: Run application
+        run: |
+          source venv/bin/activate
+          python main.py
