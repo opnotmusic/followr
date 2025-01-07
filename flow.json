@@ -1,0 +1,17 @@
+{
+  "name": "Social Media Bot Dev",
+  "image": "mcr.microsoft.com/devcontainers/python:3.9",
+  "features": {
+    "ghcr.io/devcontainers/features/apt-packages:1": {
+      "packages": "libnss3 libxcomposite1 libxrandr2 libasound2 libpangocairo-1.0-0 libgtk-3-0"
+    }
+  },
+  "postCreateCommand": "pip install -r requirements.txt && playwright install",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "editor.formatOnSave": true
+      }
+    }
+  }
+}
