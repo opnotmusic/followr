@@ -1,36 +1,61 @@
 [app]
-# Application name
+# (str) Title of your application
 title = Floww
 
-# Package name (lowercase, no special characters)
+# (str) Package name
 package.name = floww
 
-# Package domain (reverse domain notation)
-package.domain = org.example
+# (str) Package domain (unique reverse domain-style identifier)
+package.domain = com.example
 
-# Source directory (ensure the main Python file is at the root of this directory)
+# (str) Source code where your main.py is located
 source.dir = .
 
-# File extensions to include
+# (str) Main script to run
 source.include_exts = py,png,jpg,kv,atlas
 
-# Application version
-version = 0.1
-
-# Application requirements (list dependencies as comma-separated values)
-requirements = python3,kivy,python-dotenv,cryptography,sqlite3,requests,telegram,matplotlib
-
-# Orientation (portrait or landscape)
-orientation = portrait
-
-# Fullscreen mode (0 = disabled, 1 = enabled)
-fullscreen = 0
-
-# Android permissions (comma-separated, based on your app's needs)
+# (list) Permissions required by your application
 android.permissions = INTERNET
 
-# Icon file (provide a valid path to your icon file)
-icon.filename = icon.png
+# (str) Application version
+version = 1.0
 
-# Presplash file (provide a valid path to your presplash image)
-presplash.filename = presplash.png
+# (str) Supported orientation (one of: landscape, portrait, all)
+orientation = portrait
+
+# (bool) Indicate if the application is fullscreen
+fullscreen = 1
+
+# (str) Presplash of the application
+presplash.filename = %(source.dir)s/data/presplash.png
+
+# (str) Icon of the application
+icon.filename = %(source.dir)s/data/icon.png
+
+# (str) Supported platforms for Android
+# Ensure only Android is set here
+android.archs = armeabi-v7a, arm64-v8a
+
+# (list) Add additional Java .jar or .aar libraries
+android.add_jars =
+
+# (list) Gradle dependencies to add
+android.gradle_dependencies =
+
+# (str) Minimum API level for Android
+android.minapi = 21
+
+# (str) Android SDK path
+android.sdk_path = D:\Android
+
+# (str) Android NDK path
+android.ndk_path = D:\Android\ndk
+
+# (str) Application entry point
+entrypoint = main.py
+
+[buildozer]
+# (str) Log level (one of: info, debug, error, warning)
+log_level = 2
+
+# (bool) Automatically accept SDK license agre

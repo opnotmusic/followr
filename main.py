@@ -1,76 +1,145 @@
 import os
-import subprocess
-from kivy.app import App
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.button import Button
-from kivy.uix.label import Label
-from kivy.uix.spinner import Spinner
-from kivy.uix.textinput import TextInput
+import random
+import logging
+import sqlite3
+from datetime import datetime
+from dotenv import load_dotenv
+from transformers import pipeline
+from playwright.sync_api import sync_playwright
+from telegram import Bot
+from discord.ext import commands
+import firebase_admin
+from firebase_admin import credentials, auth
+from flask import Flask, request, jsonify
 
-class BuildApp(BoxLayout):
-    def __init__(self, **kwargs):
-        super().__init__(orientation='vertical', **kwargs)
+# Initialize Flask app
+app = Flask(__name__)
 
-        # Add a dropdown spinner for platform selection
-        self.spinner = Spinner(
-            text="Select Platform",
-            values=["Android (APK)", "iOS"],
-            size_hint=(1, None),
-            height=50
+# Load Firebase Admin credentials (service account key JSON file)
+cred = credentials.Certificate('path/to/serviceAccountKey.json')
+firebase_admin.initialize_app(cred)
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# Sentiment analysis pipeline
+sentiment_analyzer = pipeline("sentiment-analysis")
+
+# Database setup
+DB_PATH = "interactions.db"
+
+def init_database():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS interactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_url TEXT NOT NULL,
+            username TEXT NOT NULL,
+            comment TEXT,
+            sentiment TEXT,
+            engagement_score REAL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-        self.add_widget(self.spinner)
+        """
+    )
+    conn.commit()
+    conn.close()
 
-        # Add a button to trigger the build
-        self.build_button = Button(
-            text="Build",
-            size_hint=(1, None),
-            height=50
-        )
-        self.build_button.bind(on_press=self.build_app)
-        self.add_widget(self.build_button)
+init_database()
 
-        # Add a TextInput for log output
-        self.log_output = TextInput(
-            size_hint=(1, None),
-            height=300,
-            readonly=True
-        )
-        self.add_widget(self.log_output)
+# Endpoint to verify Firebase token
+@app.route('/verify-token', methods=['POST'])
+def verify_token():
+    token = request.json.get('idToken')  # Token sent from client
+    if not token:
+        return jsonify({"status": "error", "message": "No token provided"}), 400
 
-    def build_app(self, instance):
-        platform = self.spinner.text
-        if platform == "Select Platform":
-            self.log_output.text += "Please select a platform before building.\n"
-            return
+    try:
+        # Verify the token
+        decoded_token = auth.verify_id_token(token)
+        user_id = decoded_token['uid']
+        return jsonify({
+            "status": "success",
+            "uid": user_id
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 401
 
-        # Clear previous logs
-        self.log_output.text = ""
+class SocialMediaBot:
+    def __init__(self):
+        self.username = os.getenv("INSTAGRAM_USERNAME")
+        self.password = os.getenv("INSTAGRAM_PASSWORD")
+        self.target = os.getenv("TARGET_ACCOUNT", "example_target")
+        if not self.username or not self.password:
+            raise ValueError("Missing Instagram credentials! Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD in your .env file.")
 
-        command = ""
-        if platform == "Android (APK)":
-            command = "buildozer android debug"
-        elif platform == "iOS":
-            command = "buildozer ios debug"
+        # Telegram setup
+        self.telegram_bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
+        self.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
-        # Run the command and capture output
-        try:
-            self.log_output.text += f"Starting build for {platform}...\n"
-            process = subprocess.Popen(
-                command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            )
-            for line in iter(process.stdout.readline, b""):
-                self.log_output.text += line.decode("utf-8")
-            process.wait()
-            if process.returncode == 0:
-                self.log_output.text += f"{platform} build completed successfully!\n"
-            else:
-                self.log_output.text += f"Error during {platform} build.\n"
-        except Exception as e:
-            self.log_output.text += f"An error occurred: {str(e)}\n"
+        # Discord setup
+        self.discord_bot = commands.Bot(command_prefix="!")
 
-class BuildAppGUI(App):
-    def build(self):
-        return BuildApp()
+        # Interaction limits
+        self.max_comments = int(10 * 0.85)  # Limit to 85% of platform restrictions
+        self.max_likes = int(100 * 0.90)  # Limit to 90% of platform restrictions
+        self.max_follows = int(50 * 0.75)  # Limit to 75% of platform restrictions
+        self.comments_pool = self.generate_all_comments("example_user")
+
+    def generate_all_comments(self, username):
+        base_comments = {
+            "english": [
+                "Amazing post, @{username}! 🔥👽👽👽",
+                "Great content, keep it up, @{username}! 🚀👽👽👽",
+                "Love this, @{username}! 💗ྀི👽👽👽",
+                "So inspiring, @{username}! 🌟👽👽👽",
+                "Wow, just wow, @{username}! 👽👽👽🔥",
+                "This made my day, @{username}! 👽👽👽🌌",
+            ]
+        }
+        all_comments = {}
+        for language, comments in base_comments.items():
+            updated_comments = [comment.replace("{username}", username) for comment in comments]
+            all_comments[language] = updated_comments
+        return all_comments
+
+    def analyze_sentiment(self, text):
+        result = sentiment_analyzer(text)[0]
+        return result['label'], result['score']
+
+    def run(self):
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context()
+            page = context.new_page()
+
+            try:
+                self.login(page)
+                self.interact_with_posts(page)
+            except Exception as e:
+                logging.error(f"Error during bot execution: {e}")
+            finally:
+                browser.close()
+
+    def login(self, page):
+        logging.info("Logging into Instagram...")
+        page.goto("https://www.instagram.com/accounts/login/")
+        page.fill("input[name='username']", self.username)
+        page.fill("input[name='password']", self.password)
+        page.click("button[type='submit']")
+        page.wait_for_load_state("networkidle")
+        logging.info("Login successful.")
 
 if __name__ == "__main__":
-    BuildAppGUI().run()
+    # Run Flask app for token verification
+    logging.info("Starting Flask app for token verification...")
+    app.run(debug=True, port=5000)
+
+    # Initialize and run the social media bot
+    bot = SocialMediaBot()
+    bot.run()
